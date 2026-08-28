@@ -461,6 +461,12 @@ final class ClipboardRippleTests: XCTestCase {
         XCTAssertNil(ClipboardRippleMotion.contentPointerX(panelPointerX: nil, contentOffsetX: 180))
     }
 
+    func testClipboardRippleContentOffsetTracksSwiftUIScrollCoordinates() {
+        XCTAssertEqual(ClipboardRippleMotion.contentOffsetX(contentMinX: 0), 0)
+        XCTAssertEqual(ClipboardRippleMotion.contentOffsetX(contentMinX: -180), 180)
+        XCTAssertEqual(ClipboardRippleMotion.contentOffsetX(contentMinX: 12), 0)
+    }
+
     func testClipboardRipplePointerProjectsWholeScreenToPanelEdges() {
         let pointer = ClipboardRipplePointerState()
         let panelFrame = NSRect(x: 200, y: 100, width: 1_000, height: 460)

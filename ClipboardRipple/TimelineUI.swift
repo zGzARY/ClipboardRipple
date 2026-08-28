@@ -108,6 +108,10 @@ enum ClipboardRippleMotion {
         panelPointerX.map { $0 - panelInset + contentOffsetX }
     }
 
+    static func contentOffsetX(contentMinX: CGFloat) -> CGFloat {
+        max(0, -contentMinX)
+    }
+
     static func transform(for index: Int, pointerX: CGFloat?) -> ClipboardRippleTransform {
         guard let pointerX else { return .identity }
         let delta = centerX(for: index) - pointerX
@@ -160,77 +164,15 @@ enum ClipboardRippleMotion {
     }
 }
 
-private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
-    @Binding var contentOffsetX: CGFloat
-    @Binding var viewportWidth: CGFloat
+private enum ClipboardRippleCoordinateSpace {
+    static let cardTimeline = "ClipboardRipple.cardTimeline"
+}
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(contentOffsetX: $contentOffsetX, viewportWidth: $viewportWidth)
-    }
+private struct ClipboardRippleContentMinXPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { context.coordinator.attach(from: view) }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.contentOffsetX = $contentOffsetX
-        context.coordinator.viewportWidth = $viewportWidth
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    @MainActor
-    final class Coordinator {
-        var contentOffsetX: Binding<CGFloat>
-        var viewportWidth: Binding<CGFloat>
-        private weak var clipView: NSClipView?
-        private var observer: NSObjectProtocol?
-
-        init(contentOffsetX: Binding<CGFloat>, viewportWidth: Binding<CGFloat>) {
-            self.contentOffsetX = contentOffsetX
-            self.viewportWidth = viewportWidth
-        }
-
-        func attach(from view: NSView) {
-            guard let nextClipView = view.enclosingScrollView?.contentView else { return }
-            guard nextClipView !== clipView else {
-                publishOffset()
-                return
-            }
-            detach()
-            clipView = nextClipView
-            nextClipView.postsBoundsChangedNotifications = true
-            observer = NotificationCenter.default.addObserver(
-                forName: NSView.boundsDidChangeNotification,
-                object: nextClipView,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.publishOffset() }
-            }
-            publishOffset()
-        }
-
-        func detach() {
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-            observer = nil
-            clipView = nil
-        }
-
-        private func publishOffset() {
-            guard let clipView else { return }
-            let nextOffset = max(0, clipView.bounds.minX)
-            if nextOffset != contentOffsetX.wrappedValue {
-                contentOffsetX.wrappedValue = nextOffset
-            }
-            let nextWidth = max(0, clipView.bounds.width)
-            if nextWidth != viewportWidth.wrappedValue {
-                viewportWidth.wrappedValue = nextWidth
-            }
-        }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -305,7 +247,6 @@ struct TimelineView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @FocusState private var searchIsFocused: Bool
     @State private var dockContentOffsetX: CGFloat = 0
-    @State private var dockViewportWidth: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -431,103 +372,117 @@ struct TimelineView: View {
 
     private var cardTimeline: some View {
         let records = state.filteredRecords
-        return ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: ClipboardRippleMotion.cardSpacing) {
-                    if records.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
-                            let transform = ClipboardRippleMotion.transform(
-                                for: index,
-                                pointerX: reduceMotion ? nil : dockContentPointerX
-                            )
-                            let edgeTransform = ClipboardRippleMotion.edgeTransform(
-                                for: index,
-                                contentOffsetX: dockContentOffsetX,
-                                viewportWidth: dockViewportWidth,
-                                reduceMotion: reduceMotion
-                            )
-                            ClipboardCard(
-                                record: record,
-                                selected: index == state.selectedIndex,
-                                strings: state.strings
-                            )
-                                .scaleEffect(transform.scale * edgeTransform.scale, anchor: .bottom)
-                                .offset(
-                                    x: transform.horizontalOffset + edgeTransform.horizontalOffset,
-                                    y: -transform.lift + edgeTransform.retreat
+        return GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: ClipboardRippleMotion.cardSpacing) {
+                        if records.isEmpty {
+                            emptyState
+                        } else {
+                            ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                                let transform = ClipboardRippleMotion.transform(
+                                    for: index,
+                                    pointerX: reduceMotion ? nil : dockContentPointerX
                                 )
-                                .opacity(edgeTransform.opacity)
-                                .zIndex(transform.influence + edgeTransform.depth)
-                                .allowsHitTesting(edgeTransform.opacity > 0.12)
-                                .id(record.id)
-                                .onTapGesture {
-                                    state.select(index: index)
-                                }
-                                .simultaneousGesture(
-                                    TapGesture(count: 2).onEnded {
-                                        state.automaticallyPaste(
-                                            index: index,
-                                            asPlainText: NSEvent.modifierFlags.contains(.shift)
-                                        )
-                                    }
+                                let edgeTransform = ClipboardRippleMotion.edgeTransform(
+                                    for: index,
+                                    contentOffsetX: dockContentOffsetX,
+                                    viewportWidth: viewport.size.width,
+                                    reduceMotion: reduceMotion
                                 )
-                                .contextMenu {
-                                    Button(state.pasteBehavior.actionName(using: state.strings)) {
+                                ClipboardCard(
+                                    record: record,
+                                    selected: index == state.selectedIndex,
+                                    strings: state.strings
+                                )
+                                    .scaleEffect(transform.scale * edgeTransform.scale, anchor: .bottom)
+                                    .offset(
+                                        x: transform.horizontalOffset + edgeTransform.horizontalOffset,
+                                        y: -transform.lift + edgeTransform.retreat
+                                    )
+                                    .opacity(edgeTransform.opacity)
+                                    .zIndex(transform.influence + edgeTransform.depth)
+                                    .allowsHitTesting(edgeTransform.opacity > 0.12)
+                                    .id(record.id)
+                                    .onTapGesture {
                                         state.select(index: index)
-                                        state.pasteSelected()
                                     }
-                                    Button(
-                                        state.strings.format(
-                                            "action.as_plain_text",
-                                            state.pasteBehavior.actionName(using: state.strings)
-                                        )
-                                    ) {
-                                        state.select(index: index)
-                                        state.pasteSelected(asPlainText: true)
-                                    }
-                                    if !state.pinboards.isEmpty {
-                                        Menu(state.strings.text("action.pin_to_pinboard")) {
-                                            ForEach(state.pinboards) { board in
-                                                Button {
-                                                    state.togglePin(record, pinboardID: board.id)
-                                                } label: {
-                                                    let pinned = record.pinboardIDs.contains(board.id)
-                                                    Label(
-                                                        state.pinboardDisplayName(board),
-                                                        systemImage: pinned ? "checkmark" : "pin"
-                                                    )
+                                    .simultaneousGesture(
+                                        TapGesture(count: 2).onEnded {
+                                            state.automaticallyPaste(
+                                                index: index,
+                                                asPlainText: NSEvent.modifierFlags.contains(.shift)
+                                            )
+                                        }
+                                    )
+                                    .contextMenu {
+                                        Button(state.pasteBehavior.actionName(using: state.strings)) {
+                                            state.select(index: index)
+                                            state.pasteSelected()
+                                        }
+                                        Button(
+                                            state.strings.format(
+                                                "action.as_plain_text",
+                                                state.pasteBehavior.actionName(using: state.strings)
+                                            )
+                                        ) {
+                                            state.select(index: index)
+                                            state.pasteSelected(asPlainText: true)
+                                        }
+                                        if !state.pinboards.isEmpty {
+                                            Menu(state.strings.text("action.pin_to_pinboard")) {
+                                                ForEach(state.pinboards) { board in
+                                                    Button {
+                                                        state.togglePin(record, pinboardID: board.id)
+                                                    } label: {
+                                                        let pinned = record.pinboardIDs.contains(board.id)
+                                                        Label(
+                                                            state.pinboardDisplayName(board),
+                                                            systemImage: pinned ? "checkmark" : "pin"
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
+                                        Divider()
+                                        Button(state.strings.text("action.delete"), role: .destructive) {
+                                            state.select(index: index)
+                                            state.deleteSelected()
+                                        }
                                     }
-                                    Divider()
-                                    Button(state.strings.text("action.delete"), role: .destructive) {
-                                        state.select(index: index)
-                                        state.deleteSelected()
-                                    }
-                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, ClipboardRippleMotion.horizontalInset)
+                    .padding(.top, ClipboardRippleMotion.cardTopInset)
+                    .padding(.bottom, ClipboardRippleMotion.cardBottomInset)
+                    .background {
+                        GeometryReader { content in
+                            Color.clear.preference(
+                                key: ClipboardRippleContentMinXPreferenceKey.self,
+                                value: content.frame(
+                                    in: .named(ClipboardRippleCoordinateSpace.cardTimeline)
+                                ).minX
+                            )
                         }
                     }
                 }
-                .padding(.horizontal, ClipboardRippleMotion.horizontalInset)
-                .padding(.top, ClipboardRippleMotion.cardTopInset)
-                .padding(.bottom, ClipboardRippleMotion.cardBottomInset)
-                .background {
-                    ClipboardRippleScrollOffsetReader(
-                        contentOffsetX: $dockContentOffsetX,
-                        viewportWidth: $dockViewportWidth
-                    )
+                .coordinateSpace(name: ClipboardRippleCoordinateSpace.cardTimeline)
+                .scrollClipDisabled()
+                .onChange(of: state.selectionRevealGeneration) { _, _ in
+                    guard records.indices.contains(state.selectedIndex) else { return }
+                    proxy.scrollTo(records[state.selectedIndex].id, anchor: .center)
                 }
             }
-            .scrollClipDisabled()
-            .onChange(of: state.selectionRevealGeneration) { _, _ in
-                guard records.indices.contains(state.selectedIndex) else { return }
-                proxy.scrollTo(records[state.selectedIndex].id, anchor: .center)
+            .onPreferenceChange(ClipboardRippleContentMinXPreferenceKey.self) { contentMinX in
+                let nextOffset = ClipboardRippleMotion.contentOffsetX(contentMinX: contentMinX)
+                if abs(nextOffset - dockContentOffsetX) > 0.25 {
+                    dockContentOffsetX = nextOffset
+                }
             }
         }
         .frame(height: ClipboardRippleMotion.cardTimelineHeight)
+        .compositingGroup()
         .mask(cardEdgeFeatherMask)
     }
 
