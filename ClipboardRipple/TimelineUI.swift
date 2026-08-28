@@ -95,7 +95,7 @@ enum ClipboardRippleMotion {
     private static let maximumScale: CGFloat = 1.15
     private static let maximumLift: CGFloat = 12
     private static let maximumPush: CGFloat = 28
-    private static let edgeTransitionWidth: CGFloat = 140
+    private static let edgeTransitionWidth: CGFloat = 112
     private static let minimumEdgeScale: CGFloat = 0.86
     private static let maximumEdgeRetreat: CGFloat = 14
     private static let maximumEdgePush: CGFloat = 12
@@ -528,18 +528,18 @@ struct TimelineView: View {
             }
         }
         .frame(height: ClipboardRippleMotion.cardTimelineHeight)
-        .mask(cardEdgeFadeMask)
+        .mask(cardEdgeFeatherMask)
     }
 
-    private var cardEdgeFadeMask: some View {
+    private var cardEdgeFeatherMask: some View {
         GeometryReader { geometry in
             let width = max(geometry.size.width, 1)
-            let fadeStop = min(0.18, 96 / width)
+            let featherStop = min(0.08, 24 / width)
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: .black, location: fadeStop),
-                    .init(color: .black, location: 1 - fadeStop),
+                    .init(color: .black, location: featherStop),
+                    .init(color: .black, location: 1 - featherStop),
                     .init(color: .clear, location: 1),
                 ],
                 startPoint: .leading,

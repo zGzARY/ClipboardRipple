@@ -380,6 +380,21 @@ final class ClipboardRippleTests: XCTestCase {
         )
     }
 
+    func testEdgeRetreatStaysClearBeforeTheCardReachesTheEdge() {
+        let index = 2
+        let center = ClipboardRippleMotion.centerX(for: index)
+
+        XCTAssertEqual(
+            ClipboardRippleMotion.edgeTransform(
+                for: index,
+                contentOffsetX: center - 120,
+                viewportWidth: 1_000,
+                reduceMotion: false
+            ),
+            .identity
+        )
+    }
+
     func testEdgeRetreatIsSymmetricAtLeftAndRightEdges() {
         let index = 2
         let viewportWidth: CGFloat = 1_000
