@@ -1,0 +1,975 @@
+@preconcurrency import AppKit
+import Carbon
+import QuartzCore
+import SwiftUI
+
+struct VisualEffectView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+    }
+}
+
+enum CoarseRelativeTime {
+    static func text(for date: Date, relativeTo now: Date = Date()) -> String {
+        let seconds = max(0, now.timeIntervalSince(date))
+        switch seconds {
+        case ..<60: return "just now"
+        case ..<180: return "1 min ago"
+        case ..<300: return "3 min ago"
+        case ..<600: return "5 min ago"
+        case ..<1_200: return "10 min ago"
+        case ..<1_800: return "20 min ago"
+        case ..<3_600: return "30 min ago"
+        case ..<86_400: return "\(Int(seconds / 3_600)) h ago"
+        default:
+            let days = Int(seconds / 86_400)
+            return days == 1 ? "1 day ago" : "\(days) days ago"
+        }
+    }
+}
+
+struct ClipDockTransform: Equatable {
+    let scale: CGFloat
+    let lift: CGFloat
+    let horizontalOffset: CGFloat
+    let influence: CGFloat
+
+    static let identity = ClipDockTransform(
+        scale: 1,
+        lift: 0,
+        horizontalOffset: 0,
+        influence: 0
+    )
+}
+
+enum ClipDockMotion {
+    static let cardWidth: CGFloat = 228
+    static let cardHeight: CGFloat = 232
+    static let cardSpacing: CGFloat = 14
+    static let horizontalInset: CGFloat = 28
+    static let cardTopInset: CGFloat = 48
+    static let cardBottomInset: CGFloat = 10
+    static let panelInset: CGFloat = 18
+    static let surfaceTopInset: CGFloat = 54
+    static let cardTimelineHeight = cardTopInset + cardHeight + cardBottomInset
+
+    static func panelHeight(showsShortcutHints: Bool) -> CGFloat {
+        showsShortcutHints ? 380 : 350
+    }
+
+    private static let influenceRadius: CGFloat = 600
+    private static let maximumScale: CGFloat = 1.15
+    private static let maximumLift: CGFloat = 12
+    private static let maximumPush: CGFloat = 28
+
+    static func centerX(for index: Int) -> CGFloat {
+        horizontalInset + cardWidth / 2 + CGFloat(index) * (cardWidth + cardSpacing)
+    }
+
+    static func contentPointerX(panelPointerX: CGFloat?, contentOffsetX: CGFloat) -> CGFloat? {
+        panelPointerX.map { $0 - panelInset + contentOffsetX }
+    }
+
+    static func transform(for index: Int, pointerX: CGFloat?) -> ClipDockTransform {
+        guard let pointerX else { return .identity }
+        let delta = centerX(for: index) - pointerX
+        let distance = abs(delta)
+        guard distance < influenceRadius else { return .identity }
+
+        let progress = distance / influenceRadius
+        let influence = (cos(.pi * progress) + 1) / 2
+        let direction: CGFloat = delta == 0 ? 0 : (delta < 0 ? -1 : 1)
+        let push = direction * maximumPush * sin(.pi * progress) * influence
+        return ClipDockTransform(
+            scale: 1 + (maximumScale - 1) * influence,
+            lift: maximumLift * influence,
+            horizontalOffset: push,
+            influence: influence
+        )
+    }
+}
+
+private struct ClipDockScrollOffsetReader: NSViewRepresentable {
+    @Binding var contentOffsetX: CGFloat
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(contentOffsetX: $contentOffsetX)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { context.coordinator.attach(from: view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.contentOffsetX = $contentOffsetX
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator {
+        var contentOffsetX: Binding<CGFloat>
+        private weak var clipView: NSClipView?
+        private var observer: NSObjectProtocol?
+
+        init(contentOffsetX: Binding<CGFloat>) {
+            self.contentOffsetX = contentOffsetX
+        }
+
+        func attach(from view: NSView) {
+            guard let nextClipView = view.enclosingScrollView?.contentView else { return }
+            guard nextClipView !== clipView else {
+                publishOffset()
+                return
+            }
+            detach()
+            clipView = nextClipView
+            nextClipView.postsBoundsChangedNotifications = true
+            observer = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: nextClipView,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.publishOffset() }
+            }
+            publishOffset()
+        }
+
+        func detach() {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            clipView = nil
+        }
+
+        private func publishOffset() {
+            guard let clipView else { return }
+            let nextOffset = max(0, clipView.bounds.minX)
+            guard nextOffset != contentOffsetX.wrappedValue else { return }
+            contentOffsetX.wrappedValue = nextOffset
+        }
+    }
+}
+
+@MainActor
+final class ClipDockPointerState: ObservableObject {
+    @Published private(set) var panelX: CGFloat?
+
+    func update(screenX: CGFloat, panelFrame: NSRect) {
+        let nextX = min(max(screenX - panelFrame.minX, 0), panelFrame.width)
+        guard nextX != panelX else { return }
+        panelX = nextX
+    }
+
+    func clear() {
+        panelX = nil
+    }
+}
+
+@MainActor
+private enum CardImageCache {
+    private static let sourceIcons: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 24
+        cache.totalCostLimit = 512 * 1_024
+        return cache
+    }()
+
+    private static let thumbnails: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 6
+        cache.totalCostLimit = 4 * 1_024 * 1_024
+        return cache
+    }()
+
+    static func sourceIcon(for bundleIdentifier: String?) -> NSImage? {
+        guard let bundleIdentifier else { return nil }
+        let key = bundleIdentifier as NSString
+        if let cached = sourceIcons.object(forKey: key) { return cached }
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: bundleIdentifier
+        ) else { return nil }
+
+        let source = NSWorkspace.shared.icon(forFile: applicationURL.path)
+        let icon = NSImage(size: NSSize(width: 64, height: 64))
+        icon.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        source.draw(
+            in: NSRect(x: 0, y: 0, width: 64, height: 64),
+            from: NSRect(origin: .zero, size: source.size),
+            operation: .copy,
+            fraction: 1
+        )
+        icon.unlockFocus()
+        sourceIcons.setObject(icon, forKey: key, cost: 64 * 64 * 4)
+        return icon
+    }
+
+    static func thumbnail(for recordID: UUID, data: Data) -> NSImage? {
+        let key = recordID.uuidString as NSString
+        if let cached = thumbnails.object(forKey: key) { return cached }
+        guard let image = NSImage(data: data) else { return nil }
+        let cost = max(1, Int(image.size.width * image.size.height * 4))
+        thumbnails.setObject(image, forKey: key, cost: cost)
+        return image
+    }
+}
+
+struct TimelineView: View {
+    @ObservedObject var state: AppState
+    @ObservedObject var pointerState: ClipDockPointerState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @FocusState private var searchIsFocused: Bool
+    @State private var dockContentOffsetX: CGFloat = 0
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            dockSurface
+
+            VStack(spacing: 9) {
+                cardTimeline
+                dockControls
+                if shouldShowFooter {
+                    footer
+                }
+            }
+            .padding(.horizontal, ClipDockMotion.panelInset)
+            .padding(.bottom, 12)
+
+            if state.isCreatingPinboard {
+                Color.black.opacity(0.22)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { state.isCreatingPinboard = false }
+                NewPinboardView { name, color in
+                    state.createPinboard(name: name, colorHex: color)
+                    state.isCreatingPinboard = false
+                } onCancel: {
+                    state.isCreatingPinboard = false
+                }
+                .background(
+                    Color(nsColor: .windowBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .shadow(color: .black.opacity(0.24), radius: 18, y: 8)
+            }
+        }
+        .onChange(of: state.searchFocusGeneration) { _, _ in
+            searchIsFocused = true
+        }
+    }
+
+    private var dockSurface: some View {
+        ZStack {
+            if reduceTransparency {
+                Color(nsColor: .windowBackgroundColor)
+            } else {
+                VisualEffectView(material: .popover, blendingMode: .behindWindow)
+                Color.white.opacity(0.055)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(.white.opacity(reduceTransparency ? 0.16 : 0.38), lineWidth: 1)
+        }
+        .padding(.top, ClipDockMotion.surfaceTopInset)
+    }
+
+    private var dockControls: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("搜索内容、来源应用或类型", text: $state.searchText)
+                    .textFieldStyle(.plain)
+                    .focused($searchIsFocused)
+            }
+            .padding(.horizontal, 12)
+            .frame(width: 270, height: 34)
+            .background(.black.opacity(0.10), in: Capsule())
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    BoardChip(
+                        title: "剪贴板",
+                        color: .secondary,
+                        symbol: "clock.arrow.circlepath",
+                        selected: state.selectedPinboardID == nil
+                    ) {
+                        state.selectedPinboardID = nil
+                    }
+
+                    ForEach(state.pinboards) { board in
+                        BoardChip(
+                            title: board.name,
+                            color: Color(hex: board.colorHex),
+                            symbol: "pin.fill",
+                            selected: state.selectedPinboardID == board.id
+                        ) {
+                            state.selectedPinboardID = board.id
+                        }
+                        .contextMenu {
+                            Button("删除 \(board.name)", role: .destructive) {
+                                state.deletePinboard(board)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                state.isCreatingPinboard = true
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .background(.white.opacity(0.14), in: Circle())
+
+            Button {
+                state.onSettingsRequested?()
+            } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .background(.white.opacity(0.14), in: Circle())
+        }
+    }
+
+    private var cardTimeline: some View {
+        let records = state.filteredRecords
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: ClipDockMotion.cardSpacing) {
+                    if records.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                            let transform = ClipDockMotion.transform(
+                                for: index,
+                                pointerX: reduceMotion ? nil : dockContentPointerX
+                            )
+                            ClipboardCard(record: record, selected: index == state.selectedIndex)
+                                .scaleEffect(transform.scale, anchor: .bottom)
+                                .offset(x: transform.horizontalOffset, y: -transform.lift)
+                                .zIndex(transform.influence)
+                                .id(record.id)
+                                .onTapGesture {
+                                    state.select(index: index)
+                                }
+                                .simultaneousGesture(
+                                    TapGesture(count: 2).onEnded {
+                                        state.automaticallyPaste(
+                                            index: index,
+                                            asPlainText: NSEvent.modifierFlags.contains(.shift)
+                                        )
+                                    }
+                                )
+                                .contextMenu {
+                                    Button(state.pasteBehavior.actionName) {
+                                        state.select(index: index)
+                                        state.pasteSelected()
+                                    }
+                                    Button("\(state.pasteBehavior.actionName)为纯文本") {
+                                        state.select(index: index)
+                                        state.pasteSelected(asPlainText: true)
+                                    }
+                                    if !state.pinboards.isEmpty {
+                                        Menu("固定到 Pinboard") {
+                                            ForEach(state.pinboards) { board in
+                                                Button {
+                                                    state.togglePin(record, pinboardID: board.id)
+                                                } label: {
+                                                    let pinned = record.pinboardIDs.contains(board.id)
+                                                    Label(board.name, systemImage: pinned ? "checkmark" : "pin")
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Divider()
+                                    Button("删除", role: .destructive) {
+                                        state.select(index: index)
+                                        state.deleteSelected()
+                                    }
+                                }
+                        }
+                    }
+                }
+                .padding(.horizontal, ClipDockMotion.horizontalInset)
+                .padding(.top, ClipDockMotion.cardTopInset)
+                .padding(.bottom, ClipDockMotion.cardBottomInset)
+                .background {
+                    ClipDockScrollOffsetReader(contentOffsetX: $dockContentOffsetX)
+                }
+            }
+            .onChange(of: state.selectionRevealGeneration) { _, _ in
+                guard records.indices.contains(state.selectedIndex) else { return }
+                proxy.scrollTo(records[state.selectedIndex].id, anchor: .center)
+            }
+        }
+        .frame(height: ClipDockMotion.cardTimelineHeight)
+    }
+
+    private var dockContentPointerX: CGFloat? {
+        return ClipDockMotion.contentPointerX(
+            panelPointerX: pointerState.panelX,
+            contentOffsetX: dockContentOffsetX
+        )
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 9) {
+            Image(systemName: state.searchText.isEmpty ? "square.on.square.dashed" : "magnifyingglass")
+                .font(.system(size: 30, weight: .light))
+            Text(state.searchText.isEmpty ? "复制一些内容，卡片会出现在这里" : "没有匹配的剪贴内容")
+                .font(.headline)
+            Text(state.searchText.isEmpty ? "默认保留 1 天，可在设置中调整" : "尝试更短的关键词或切回剪贴板")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 420, height: 190)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private var footer: some View {
+        HStack {
+            if let notice = state.notice {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            } else if state.isPaused {
+                Label("捕获已暂停", systemImage: "pause.circle.fill")
+                    .foregroundStyle(.orange)
+            } else {
+                Label("正在本地保存剪贴内容", systemImage: "lock.fill")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if state.showsShortcutHints {
+                Text(footerShortcutText)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
+    }
+
+    private var shouldShowFooter: Bool {
+        state.showsShortcutHints || state.notice != nil || state.isPaused
+    }
+
+    private var footerShortcutText: String {
+        let action = state.pasteBehavior.actionName
+        return "← → 选择   双击 插入   ⇧双击 纯文本   ↩ \(action)   ⇧↩ 纯文本   ⌘1…9 快速\(action)"
+    }
+}
+
+private struct BoardChip: View {
+    let title: String
+    let color: Color
+    let symbol: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                .padding(.horizontal, 11)
+                .frame(height: 32)
+                .background(selected ? color.opacity(0.22) : .white.opacity(0.08), in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(selected ? color.opacity(0.55) : .clear, lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ClipboardCard: View {
+    let record: ClipboardRecord
+    let selected: Bool
+
+    private var accent: Color {
+        switch record.kind {
+        case .text: Color(hex: "1697F6")
+        case .richText: Color(hex: "F5B700")
+        case .link: Color(hex: "2CCB67")
+        case .image: Color(hex: "FF4655")
+        case .file: Color(hex: "7A8496")
+        case .color: Color(hex: "EC4F93")
+        case .unknown: Color(hex: "8B63E6")
+        }
+    }
+
+    private var paperColor: Color {
+        switch record.kind {
+        case .text: Color(hex: "FFF6C9")
+        case .richText: Color(hex: "FFF1B8")
+        case .link: Color(hex: "F3FFF5")
+        case .image: .white
+        case .file: Color(hex: "F7F8FA")
+        case .color: Color(hex: "FFF0F7")
+        case .unknown: Color(hex: "F5F1FF")
+        }
+    }
+
+    private var sourceIcon: NSImage? {
+        CardImageCache.sourceIcon(for: record.sourceBundleIdentifier)
+    }
+
+    private var detailLabel: String {
+        switch record.kind {
+        case .text, .richText, .link:
+            "\(record.searchableText.count) 字符"
+        case .image:
+            record.searchableText
+        case .file:
+            "文件"
+        case .color:
+            "颜色"
+        case .unknown:
+            record.kind.displayName
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.kind.displayName)
+                        .font(.system(size: 15, weight: .bold))
+                    Text(CoarseRelativeTime.text(for: record.capturedAt))
+                        .font(.caption2)
+                        .opacity(0.82)
+                }
+                .foregroundStyle(.white)
+                Spacer()
+                Group {
+                    if let sourceIcon {
+                        Image(nsImage: sourceIcon)
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                    } else {
+                        Image(systemName: record.kind.symbolName)
+                            .font(.system(size: 21, weight: .medium))
+                            .foregroundStyle(accent)
+                    }
+                }
+                .frame(width: 32, height: 32)
+                .padding(4)
+                .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                .help(record.sourceApplicationName ?? "未知来源")
+                .accessibilityLabel(record.sourceApplicationName ?? "未知来源")
+            }
+            .padding(.horizontal, 12)
+            .frame(width: ClipDockMotion.cardWidth, height: 56)
+            .background(
+                LinearGradient(
+                    colors: [accent, accent.opacity(0.84)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .zIndex(1)
+
+            Group {
+                if let thumbnailData = record.thumbnailData,
+                   let image = CardImageCache.thumbnail(for: record.id, data: thumbnailData) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(
+                            width: ClipDockMotion.cardWidth,
+                            height: 148
+                        )
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(record.title)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.84))
+                            .lineLimit(2)
+                        if record.searchableText != record.title {
+                            Text(String(record.searchableText.prefix(600)))
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(.black.opacity(0.72))
+                                .lineLimit(5)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                }
+            }
+            .frame(width: ClipDockMotion.cardWidth, height: 148)
+            .background(paperColor)
+            .clipped()
+
+            HStack(spacing: 6) {
+                Text(record.sourceApplicationName ?? "未知来源")
+                    .lineLimit(1)
+                Spacer()
+                if record.isPinned {
+                    Image(systemName: "pin.fill")
+                        .foregroundStyle(.orange)
+                }
+                Text(detailLabel)
+            }
+            .font(.caption2)
+            .foregroundStyle(.black.opacity(0.55))
+            .padding(.horizontal, 11)
+            .frame(height: 28)
+            .background(paperColor)
+        }
+        .frame(width: ClipDockMotion.cardWidth, height: ClipDockMotion.cardHeight)
+        .background(paperColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(selected ? Color.accentColor : .black.opacity(0.06), lineWidth: selected ? 3 : 1)
+        }
+        .shadow(color: .black.opacity(0.14), radius: 8, y: 5)
+    }
+}
+
+private struct NewPinboardView: View {
+    let onCreate: (String, String) -> Void
+    let onCancel: () -> Void
+    @State private var name = ""
+    @State private var selectedColor = "FFB020"
+    @FocusState private var nameIsFocused: Bool
+
+    private let colors = ["FFB020", "FF5A67", "31C66A", "2F95FF", "906BFF", "EC58B5"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("新建 Pinboard")
+                .font(.title2.weight(.semibold))
+            TextField("名称", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($nameIsFocused)
+            HStack {
+                ForEach(colors, id: \.self) { hex in
+                    Button {
+                        selectedColor = hex
+                    } label: {
+                        Circle()
+                            .fill(Color(hex: hex))
+                            .frame(width: 27, height: 27)
+                            .overlay {
+                                Circle().strokeBorder(.white, lineWidth: selectedColor == hex ? 3 : 0)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("取消", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("创建") {
+                    onCreate(name, selectedColor)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 390)
+        .onAppear { nameIsFocused = true }
+    }
+}
+
+final class TimelinePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+@MainActor
+final class TimelinePanelController: NSObject, NSWindowDelegate {
+    let panel: TimelinePanel
+    private(set) var targetApplication: NSRunningApplication?
+
+    private let state: AppState
+    private let pointerState = ClipDockPointerState()
+    private var keyMonitor: Any?
+    private var localPointerMonitor: Any?
+    private var globalPointerMonitor: Any?
+    private var isHiding = false
+    private var animationGeneration = 0
+
+    init(state: AppState) {
+        self.state = state
+        panel = TimelinePanel(
+            contentRect: NSRect(x: 0, y: 0, width: 1_100, height: 380),
+            styleMask: [.borderless, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        super.init()
+
+        panel.delegate = self
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.minSize = NSSize(width: 720, height: 340)
+        panel.maxSize = NSSize(width: 1_600, height: 540)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.isMovableByWindowBackground = false
+        panel.acceptsMouseMovedEvents = true
+        panel.contentViewController = NSHostingController(
+            rootView: TimelineView(state: state, pointerState: pointerState)
+        )
+    }
+
+    var isVisible: Bool { panel.isVisible && !isHiding }
+
+    func show() {
+        if let frontmost = NSWorkspace.shared.frontmostApplication,
+           frontmost.bundleIdentifier != Bundle.main.bundleIdentifier {
+            targetApplication = frontmost
+        }
+        state.refresh()
+        let finalFrame = frameOnActiveScreen()
+        installKeyMonitor()
+        NSApp.activate(ignoringOtherApps: true)
+
+        animationGeneration += 1
+        let generation = animationGeneration
+        isHiding = false
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        panel.setFrame(reduceMotion ? finalFrame : hiddenFrame(below: finalFrame), display: false)
+        panel.alphaValue = reduceMotion ? 1 : 0
+        panel.makeKeyAndOrderFront(nil)
+        installPointerMonitors()
+
+        guard !reduceMotion else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.20, 0.82, 0.20, 1)
+            panel.animator().setFrame(finalFrame, display: true)
+            panel.animator().alphaValue = 1
+        } completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.animationGeneration == generation else { return }
+                self.panel.setFrame(finalFrame, display: true)
+                self.panel.alphaValue = 1
+            }
+        }
+    }
+
+    func hide() {
+        state.isCreatingPinboard = false
+        removeKeyMonitor()
+        removePointerMonitors()
+        guard panel.isVisible, !isHiding else { return }
+
+        animationGeneration += 1
+        let generation = animationGeneration
+        let finalFrame = panel.frame
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard !reduceMotion else {
+            panel.orderOut(nil)
+            return
+        }
+
+        isHiding = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.40, 0, 0.80, 0.20)
+            panel.animator().setFrame(hiddenFrame(below: finalFrame), display: true)
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.animationGeneration == generation else { return }
+                self.panel.orderOut(nil)
+                self.panel.setFrame(finalFrame, display: false)
+                self.panel.alphaValue = 1
+                self.isHiding = false
+            }
+        }
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        hide()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        updateDockPointer()
+    }
+
+    private func frameOnActiveScreen() -> NSRect {
+        let mouseLocation = NSEvent.mouseLocation
+        let activeScreen = NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) } ?? NSScreen.main
+        let visibleFrame = activeScreen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? panel.frame
+        let width = min(max(visibleFrame.width - 32, 720), 1_420)
+        let height = min(
+            ClipDockMotion.panelHeight(showsShortcutHints: state.showsShortcutHints),
+            visibleFrame.height - 28
+        )
+        return NSRect(
+            x: visibleFrame.midX - width / 2,
+            y: visibleFrame.minY + 14,
+            width: width,
+            height: height
+        )
+    }
+
+    private func hiddenFrame(below visibleFrame: NSRect) -> NSRect {
+        let midpoint = NSPoint(x: visibleFrame.midX, y: visibleFrame.midY)
+        let screenBottom = NSScreen.screens.first { NSMouseInRect(midpoint, $0.frame, false) }?.frame.minY
+            ?? NSScreen.main?.frame.minY
+            ?? visibleFrame.minY
+        return NSRect(
+            x: visibleFrame.minX,
+            y: screenBottom - visibleFrame.height - 8,
+            width: visibleFrame.width,
+            height: visibleFrame.height
+        )
+    }
+
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { @MainActor [weak self] event in
+            self?.handleKey(event) ?? event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+        }
+        keyMonitor = nil
+    }
+
+    private func installPointerMonitors() {
+        guard localPointerMonitor == nil, globalPointerMonitor == nil else {
+            updateDockPointer()
+            return
+        }
+        let events: NSEvent.EventTypeMask = [
+            .mouseMoved,
+            .leftMouseDragged,
+            .rightMouseDragged,
+            .otherMouseDragged,
+        ]
+        localPointerMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { @MainActor [weak self] event in
+            self?.updateDockPointer()
+            return event
+        }
+        globalPointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { @MainActor [weak self] _ in
+            self?.updateDockPointer()
+        }
+        updateDockPointer()
+    }
+
+    private func removePointerMonitors() {
+        if let localPointerMonitor {
+            NSEvent.removeMonitor(localPointerMonitor)
+        }
+        if let globalPointerMonitor {
+            NSEvent.removeMonitor(globalPointerMonitor)
+        }
+        localPointerMonitor = nil
+        globalPointerMonitor = nil
+        pointerState.clear()
+    }
+
+    private func updateDockPointer() {
+        pointerState.update(screenX: NSEvent.mouseLocation.x, panelFrame: panel.frame)
+    }
+
+    private func handleKey(_ event: NSEvent) -> NSEvent? {
+        guard event.window === panel else { return event }
+        guard !state.isCreatingPinboard else { return event }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if modifiers.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "f" {
+            state.requestSearchFocus()
+            return nil
+        }
+        if modifiers.contains(.command), event.charactersIgnoringModifiers == "," {
+            state.onSettingsRequested?()
+            return nil
+        }
+
+        if modifiers.contains(.command), let index = quickPasteIndex(for: event.keyCode) {
+            state.paste(index: index, asPlainText: modifiers.contains(.shift))
+            return nil
+        }
+
+        switch Int(event.keyCode) {
+        case kVK_LeftArrow:
+            state.moveSelection(by: -1)
+            return nil
+        case kVK_RightArrow:
+            state.moveSelection(by: 1)
+            return nil
+        case kVK_Return, kVK_ANSI_KeypadEnter:
+            state.pasteSelected(asPlainText: modifiers.contains(.shift))
+            return nil
+        case kVK_Escape:
+            if state.searchText.isEmpty {
+                hide()
+            } else {
+                state.searchText = ""
+                panel.makeFirstResponder(nil)
+            }
+            return nil
+        default:
+            break
+        }
+
+        if panel.firstResponder is NSTextView {
+            return event
+        }
+
+        switch Int(event.keyCode) {
+        case kVK_Delete, kVK_ForwardDelete:
+            state.deleteSelected()
+            return nil
+        default:
+            return event
+        }
+    }
+
+    private func quickPasteIndex(for keyCode: UInt16) -> Int? {
+        let codes = [
+            kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3,
+            kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6,
+            kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9
+        ]
+        return codes.firstIndex(of: Int(keyCode))
+    }
+}
+
+extension Color {
+    init(hex: String) {
+        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var value: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&value)
+        let red = Double((value >> 16) & 0xFF) / 255
+        let green = Double((value >> 8) & 0xFF) / 255
+        let blue = Double(value & 0xFF) / 255
+        self.init(red: red, green: green, blue: blue)
+    }
+}
