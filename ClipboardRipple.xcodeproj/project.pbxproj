@@ -6,7 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B00000000000000000000001 /* ClipDockApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000001 /* ClipDockApp.swift */; };
+		B00000000000000000000001 /* ClipboardRippleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000001 /* ClipboardRippleApp.swift */; };
 		B00000000000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* Models.swift */; };
 		B00000000000000000000003 /* ClipboardCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000003 /* ClipboardCore.swift */; };
 		B00000000000000000000004 /* SystemServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000004 /* SystemServices.swift */; };
@@ -14,7 +14,7 @@
 		B00000000000000000000006 /* TimelineUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000006 /* TimelineUI.swift */; };
 		B00000000000000000000007 /* SettingsUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000007 /* SettingsUI.swift */; };
 		B00000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000009 /* Assets.xcassets */; };
-		B00000000000000000000009 /* ClipDockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000010 /* ClipDockTests.swift */; };
+		B00000000000000000000009 /* ClipboardRippleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000010 /* ClipboardRippleTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -23,12 +23,12 @@
 			containerPortal = P00000000000000000000001 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A00000000000000000000001;
-			remoteInfo = ClipDock;
+			remoteInfo = ClipboardRipple;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		F00000000000000000000001 /* ClipDockApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipDockApp.swift; sourceTree = "<group>"; };
+		F00000000000000000000001 /* ClipboardRippleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardRippleApp.swift; sourceTree = "<group>"; };
 		F00000000000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		F00000000000000000000003 /* ClipboardCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardCore.swift; sourceTree = "<group>"; };
 		F00000000000000000000004 /* SystemServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemServices.swift; sourceTree = "<group>"; };
@@ -37,9 +37,9 @@
 		F00000000000000000000007 /* SettingsUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUI.swift; sourceTree = "<group>"; };
 		F00000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F00000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		F00000000000000000000010 /* ClipDockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipDockTests.swift; sourceTree = "<group>"; };
-		F00000000000000000000011 /* ClipDock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipDock.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F00000000000000000000012 /* ClipDockTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClipDockTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F00000000000000000000010 /* ClipboardRippleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardRippleTests.swift; sourceTree = "<group>"; };
+		F00000000000000000000011 /* Clipboard Ripple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Clipboard Ripple.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F00000000000000000000012 /* ClipboardRippleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClipboardRippleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,16 +51,16 @@
 		G00000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
-				G00000000000000000000002 /* ClipDock */,
-				G00000000000000000000003 /* ClipDockTests */,
+				G00000000000000000000002 /* ClipboardRipple */,
+				G00000000000000000000003 /* ClipboardRippleTests */,
 				G00000000000000000000004 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		G00000000000000000000002 /* ClipDock */ = {
+		G00000000000000000000002 /* ClipboardRipple */ = {
 			isa = PBXGroup;
 			children = (
-				F00000000000000000000001 /* ClipDockApp.swift */,
+				F00000000000000000000001 /* ClipboardRippleApp.swift */,
 				F00000000000000000000002 /* Models.swift */,
 				F00000000000000000000003 /* ClipboardCore.swift */,
 				F00000000000000000000004 /* SystemServices.swift */,
@@ -70,20 +70,20 @@
 				F00000000000000000000009 /* Assets.xcassets */,
 				F00000000000000000000008 /* Info.plist */,
 			);
-			path = ClipDock;
+			path = ClipboardRipple;
 			sourceTree = "<group>";
 		};
-		G00000000000000000000003 /* ClipDockTests */ = {
+		G00000000000000000000003 /* ClipboardRippleTests */ = {
 			isa = PBXGroup;
-			children = (F00000000000000000000010 /* ClipDockTests.swift */);
-			path = ClipDockTests;
+			children = (F00000000000000000000010 /* ClipboardRippleTests.swift */);
+			path = ClipboardRippleTests;
 			sourceTree = "<group>";
 		};
 		G00000000000000000000004 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				F00000000000000000000011 /* ClipDock.app */,
-				F00000000000000000000012 /* ClipDockTests.xctest */,
+				F00000000000000000000011 /* Clipboard Ripple.app */,
+				F00000000000000000000012 /* ClipboardRippleTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -91,9 +91,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A00000000000000000000001 /* ClipDock */ = {
+		A00000000000000000000001 /* ClipboardRipple */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = L00000000000000000000002 /* Build configuration list for PBXNativeTarget "ClipDock" */;
+			buildConfigurationList = L00000000000000000000002 /* Build configuration list for PBXNativeTarget "ClipboardRipple" */;
 			buildPhases = (
 				D00000000000000000000001 /* Sources */,
 				D00000000000000000000003 /* Frameworks */,
@@ -101,14 +101,14 @@
 			);
 			buildRules = ();
 			dependencies = ();
-			name = ClipDock;
-			productName = ClipDock;
-			productReference = F00000000000000000000011 /* ClipDock.app */;
+			name = ClipboardRipple;
+			productName = "Clipboard Ripple";
+			productReference = F00000000000000000000011 /* Clipboard Ripple.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A00000000000000000000002 /* ClipDockTests */ = {
+		A00000000000000000000002 /* ClipboardRippleTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = L00000000000000000000003 /* Build configuration list for PBXNativeTarget "ClipDockTests" */;
+			buildConfigurationList = L00000000000000000000003 /* Build configuration list for PBXNativeTarget "ClipboardRippleTests" */;
 			buildPhases = (
 				D00000000000000000000004 /* Sources */,
 				D00000000000000000000006 /* Frameworks */,
@@ -116,9 +116,9 @@
 			);
 			buildRules = ();
 			dependencies = (E00000000000000000000002 /* PBXTargetDependency */);
-			name = ClipDockTests;
-			productName = ClipDockTests;
-			productReference = F00000000000000000000012 /* ClipDockTests.xctest */;
+			name = ClipboardRippleTests;
+			productName = ClipboardRippleTests;
+			productReference = F00000000000000000000012 /* ClipboardRippleTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -135,7 +135,7 @@
 					A00000000000000000000002 = {CreatedOnToolsVersion = 16.4; TestTargetID = A00000000000000000000001; };
 				};
 			};
-			buildConfigurationList = L00000000000000000000001 /* Build configuration list for PBXProject "ClipDock" */;
+			buildConfigurationList = L00000000000000000000001 /* Build configuration list for PBXProject "ClipboardRipple" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = zh_CN;
 			hasScannedForEncodings = 0;
@@ -144,7 +144,7 @@
 			productRefGroup = G00000000000000000000004 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (A00000000000000000000001 /* ClipDock */, A00000000000000000000002 /* ClipDockTests */);
+			targets = (A00000000000000000000001 /* ClipboardRipple */, A00000000000000000000002 /* ClipboardRippleTests */);
 		};
 /* End PBXProject section */
 
@@ -158,7 +158,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B00000000000000000000001 /* ClipDockApp.swift in Sources */,
+				B00000000000000000000001 /* ClipboardRippleApp.swift in Sources */,
 				B00000000000000000000002 /* Models.swift in Sources */,
 				B00000000000000000000003 /* ClipboardCore.swift in Sources */,
 				B00000000000000000000004 /* SystemServices.swift in Sources */,
@@ -168,11 +168,11 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		D00000000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000009 /* ClipDockTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		D00000000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000009 /* ClipboardRippleTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		E00000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A00000000000000000000001 /* ClipDock */; targetProxy = E00000000000000000000001 /* PBXContainerItemProxy */; };
+		E00000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A00000000000000000000001 /* ClipboardRipple */; targetProxy = E00000000000000000000001 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -190,11 +190,12 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ClipDock/Info.plist;
+				INFOPLIST_FILE = ClipboardRipple/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clipdock.local;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.clipboardripple.local;
+				PRODUCT_MODULE_NAME = ClipboardRipple;
+				PRODUCT_NAME = "Clipboard Ripple";
 				SWIFT_STRICT_CONCURRENCY = minimal;
 			};
 			name = Debug;
@@ -211,11 +212,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ClipDock/Info.plist;
+				INFOPLIST_FILE = ClipboardRipple/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clipdock.local;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.clipboardripple.local;
+				PRODUCT_MODULE_NAME = ClipboardRipple;
+				PRODUCT_NAME = "Clipboard Ripple";
 				SWIFT_STRICT_CONCURRENCY = minimal;
 			};
 			name = Release;
@@ -227,10 +229,10 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clipdock.local.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.clipboardripple.local.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = minimal;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ClipDock.app/Contents/MacOS/ClipDock";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Clipboard Ripple.app/Contents/MacOS/Clipboard Ripple";
 			};
 			name = Debug;
 		};
@@ -241,19 +243,19 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.clipdock.local.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.clipboardripple.local.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = minimal;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ClipDock.app/Contents/MacOS/ClipDock";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Clipboard Ripple.app/Contents/MacOS/Clipboard Ripple";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		L00000000000000000000001 /* Build configuration list for PBXProject "ClipDock" */ = {isa = XCConfigurationList; buildConfigurations = (C00000000000000000000001 /* Debug */, C00000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		L00000000000000000000002 /* Build configuration list for PBXNativeTarget "ClipDock" */ = {isa = XCConfigurationList; buildConfigurations = (C00000000000000000000003 /* Debug */, C00000000000000000000004 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		L00000000000000000000003 /* Build configuration list for PBXNativeTarget "ClipDockTests" */ = {isa = XCConfigurationList; buildConfigurations = (C00000000000000000000005 /* Debug */, C00000000000000000000006 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		L00000000000000000000001 /* Build configuration list for PBXProject "ClipboardRipple" */ = {isa = XCConfigurationList; buildConfigurations = (C00000000000000000000001 /* Debug */, C00000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		L00000000000000000000002 /* Build configuration list for PBXNativeTarget "ClipboardRipple" */ = {isa = XCConfigurationList; buildConfigurations = (C00000000000000000000003 /* Debug */, C00000000000000000000004 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		L00000000000000000000003 /* Build configuration list for PBXNativeTarget "ClipboardRippleTests" */ = {isa = XCConfigurationList; buildConfigurations = (C00000000000000000000005 /* Debug */, C00000000000000000000006 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 	};
 	rootObject = P00000000000000000000001 /* Project object */;

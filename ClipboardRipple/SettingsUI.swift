@@ -44,7 +44,7 @@ struct SettingsView: View {
                 if state.pasteBehavior == .copyToClipboard {
                     Label("此模式无需辅助功能授权", systemImage: "checkmark.shield.fill")
                         .foregroundStyle(.green)
-                    Text("ClipDock 会正常记录、搜索并恢复剪贴内容。选择项目后，请在目标应用按 ⌘V。")
+                    Text("Clipboard Ripple 会正常记录、搜索并恢复剪贴内容。选择项目后，请在目标应用按 ⌘V。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -96,7 +96,7 @@ struct SettingsView: View {
                 Button("清除未固定的历史…", role: .destructive) {
                     showsClearConfirmation = true
                 }
-                Text("Pinboards 中固定的项目不会被删除。ClipDock 不上传剪贴内容。")
+                Text("Pinboards 中固定的项目不会被删除。Clipboard Ripple 不上传剪贴内容。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -171,7 +171,7 @@ final class SettingsWindowController {
             )
         )
         window = NSWindow(contentViewController: controller)
-        window.title = "ClipDock 设置"
+        window.title = "Clipboard Ripple 设置"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.setContentSize(NSSize(width: 570, height: 520))
         window.center()

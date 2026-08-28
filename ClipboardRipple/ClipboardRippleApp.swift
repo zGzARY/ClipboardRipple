@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct ClipDockApp: App {
+struct ClipboardRippleApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -15,8 +15,8 @@ struct ClipDockApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let didShowWelcomePanelKey = "didShowWelcomePanelV1"
-    private static let legacyBundleIdentifier = "com.clipdeck.local"
-    private static let defaultsMigrationKey = "didMigrateClipDeckDefaultsV1"
+    private static let legacyBundleIdentifiers = ["com.clipdock.local", "com.clipdeck.local"]
+    private static let defaultsMigrationKey = "didMigrateClipboardRippleDefaultsV1"
 
     private var state: AppState!
     private var monitor: PasteboardMonitor!
@@ -34,9 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !isRunningUnitTests else { return }
         Self.migrateLegacyDefaults(
             into: .standard,
-            legacyDomain: UserDefaults.standard.persistentDomain(
-                forName: Self.legacyBundleIdentifier
-            )
+            legacyDomains: Self.legacyBundleIdentifiers.compactMap {
+                UserDefaults.standard.persistentDomain(forName: $0)
+            }
         )
 
         do {
@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             let alert = NSAlert()
             alert.alertStyle = .critical
-            alert.messageText = "ClipDock 无法启动"
+            alert.messageText = "Clipboard Ripple 无法启动"
             alert.informativeText = "无法打开本地数据库：\(error.localizedDescription)"
             alert.runModal()
             NSApp.terminate(nil)
@@ -85,11 +85,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     static func migrateLegacyDefaults(
         into current: UserDefaults,
-        legacyDomain: [String: Any]?
+        legacyDomains: [[String: Any]]
     ) {
         guard !current.bool(forKey: defaultsMigrationKey) else { return }
-        for (key, value) in legacyDomain ?? [:] where current.object(forKey: key) == nil {
-            current.set(value, forKey: key)
+        for legacyDomain in legacyDomains {
+            for (key, value) in legacyDomain where current.object(forKey: key) == nil {
+                current.set(value, forKey: key)
+            }
         }
         current.set(true, forKey: defaultsMigrationKey)
     }
@@ -135,20 +137,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem.button {
             button.image = NSImage(
                 systemSymbolName: "square.on.square",
-                accessibilityDescription: "ClipDock"
+                accessibilityDescription: "Clipboard Ripple"
             )
-            button.toolTip = "ClipDock"
+            button.toolTip = "Clipboard Ripple"
         }
 
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(withTitle: "显示 ClipDock", action: #selector(showTimeline), keyEquivalent: "")
+        menu.addItem(withTitle: "显示 Clipboard Ripple", action: #selector(showTimeline), keyEquivalent: "")
         pauseMenuItem = menu.addItem(withTitle: "暂停捕获", action: #selector(togglePause), keyEquivalent: "")
         launchMenuItem = menu.addItem(withTitle: "登录时启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "设置…", action: #selector(showSettingsAction), keyEquivalent: ",")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "退出 ClipDock", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: "退出 Clipboard Ripple", action: #selector(quit), keyEquivalent: "q")
         for item in menu.items { item.target = self }
         statusItem.menu = menu
     }

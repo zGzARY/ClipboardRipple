@@ -221,7 +221,7 @@ extension ClipboardPayload {
             fraction: 1
         )
         target.unlockFocus()
-        return target.clipDeckPNGData()
+        return target.clipboardRipplePNGData()
     }
 }
 
@@ -290,10 +290,17 @@ final class PasteboardMonitor {
 
 @MainActor
 final class HistoryStore {
-    private static let directoryName = "ClipDock"
-    private static let storeName = "ClipDock.store"
-    private static let legacyDirectoryName = "ClipDeck"
-    private static let legacyStoreName = "ClipDeck.store"
+    private static let directoryName = "ClipboardRipple"
+    private static let storeName = "ClipboardRipple.store"
+    private static let supportDirectoryName = ".ClipboardRipple_SUPPORT"
+    private static let legacyStores: [(
+        directoryName: String,
+        storeName: String,
+        supportDirectoryName: String
+    )] = [
+        ("ClipDock", "ClipDock.store", ".ClipDock_SUPPORT"),
+        ("ClipDeck", "ClipDeck.store", ".ClipDeck_SUPPORT"),
+    ]
 
     private let container: ModelContainer
     private let context: ModelContext
@@ -334,22 +341,30 @@ final class HistoryStore {
         let destination = baseURL.appendingPathComponent(directoryName, isDirectory: true)
         guard !fileManager.fileExists(atPath: destination.path) else { return }
 
+        guard let legacy = legacyStores.first(where: { candidate in
+            let directory = baseURL.appendingPathComponent(
+                candidate.directoryName,
+                isDirectory: true
+            )
+            return fileManager.fileExists(
+                atPath: directory.appendingPathComponent(candidate.storeName).path
+            )
+        }) else { return }
+
         let legacyDirectory = baseURL.appendingPathComponent(
-            legacyDirectoryName,
+            legacy.directoryName,
             isDirectory: true
         )
-        let legacyStore = legacyDirectory.appendingPathComponent(legacyStoreName)
-        guard fileManager.fileExists(atPath: legacyStore.path) else { return }
 
         let staging = baseURL.appendingPathComponent(
-            ".ClipDock-migration-\(UUID().uuidString)",
+            ".ClipboardRipple-migration-\(UUID().uuidString)",
             isDirectory: true
         )
         try fileManager.copyItem(at: legacyDirectory, to: staging)
         defer { try? fileManager.removeItem(at: staging) }
 
         for suffix in ["", "-wal", "-shm"] {
-            let source = staging.appendingPathComponent(legacyStoreName + suffix)
+            let source = staging.appendingPathComponent(legacy.storeName + suffix)
             guard fileManager.fileExists(atPath: source.path) else { continue }
             try fileManager.moveItem(
                 at: source,
@@ -357,11 +372,14 @@ final class HistoryStore {
             )
         }
 
-        let legacySupport = staging.appendingPathComponent(".ClipDeck_SUPPORT", isDirectory: true)
+        let legacySupport = staging.appendingPathComponent(
+            legacy.supportDirectoryName,
+            isDirectory: true
+        )
         if fileManager.fileExists(atPath: legacySupport.path) {
             try fileManager.moveItem(
                 at: legacySupport,
-                to: staging.appendingPathComponent(".ClipDock_SUPPORT", isDirectory: true)
+                to: staging.appendingPathComponent(supportDirectoryName, isDirectory: true)
             )
         }
         try fileManager.moveItem(at: staging, to: destination)

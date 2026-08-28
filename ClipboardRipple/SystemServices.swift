@@ -52,9 +52,9 @@ enum PasteBehavior: String, CaseIterable, Identifiable {
     }
 }
 
-private let clipDeckHotKeySignature: OSType = 0x434C5044 // CLPD
+private let clipboardRippleHotKeySignature: OSType = 0x4352504C // CRPL
 
-private func clipDeckGlobalHotKeyHandler(
+private func clipboardRippleGlobalHotKeyHandler(
     _: EventHandlerCallRef?,
     event: EventRef?,
     userData: UnsafeMutableRawPointer?
@@ -71,7 +71,7 @@ private func clipDeckGlobalHotKeyHandler(
         &hotKeyID
     )
     guard status == noErr,
-          hotKeyID.signature == clipDeckHotKeySignature,
+          hotKeyID.signature == clipboardRippleHotKeySignature,
           hotKeyID.id == 1
     else { return OSStatus(eventNotHandledErr) }
 
@@ -99,7 +99,7 @@ final class GlobalShortcutService {
         let pointer = Unmanaged.passUnretained(self).toOpaque()
         let handlerStatus = InstallEventHandler(
             GetApplicationEventTarget(),
-            clipDeckGlobalHotKeyHandler,
+            clipboardRippleGlobalHotKeyHandler,
             1,
             &eventType,
             pointer,
@@ -113,7 +113,7 @@ final class GlobalShortcutService {
             )
         }
 
-        let identifier = EventHotKeyID(signature: clipDeckHotKeySignature, id: 1)
+        let identifier = EventHotKeyID(signature: clipboardRippleHotKeySignature, id: 1)
         let registerStatus = RegisterEventHotKey(
             UInt32(kVK_ANSI_V),
             definition.carbonModifiers,

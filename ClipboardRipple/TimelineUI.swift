@@ -40,13 +40,13 @@ enum CoarseRelativeTime {
     }
 }
 
-struct ClipDockTransform: Equatable {
+struct ClipboardRippleTransform: Equatable {
     let scale: CGFloat
     let lift: CGFloat
     let horizontalOffset: CGFloat
     let influence: CGFloat
 
-    static let identity = ClipDockTransform(
+    static let identity = ClipboardRippleTransform(
         scale: 1,
         lift: 0,
         horizontalOffset: 0,
@@ -54,7 +54,7 @@ struct ClipDockTransform: Equatable {
     )
 }
 
-enum ClipDockMotion {
+enum ClipboardRippleMotion {
     static let cardWidth: CGFloat = 228
     static let cardHeight: CGFloat = 232
     static let cardSpacing: CGFloat = 14
@@ -82,7 +82,7 @@ enum ClipDockMotion {
         panelPointerX.map { $0 - panelInset + contentOffsetX }
     }
 
-    static func transform(for index: Int, pointerX: CGFloat?) -> ClipDockTransform {
+    static func transform(for index: Int, pointerX: CGFloat?) -> ClipboardRippleTransform {
         guard let pointerX else { return .identity }
         let delta = centerX(for: index) - pointerX
         let distance = abs(delta)
@@ -92,7 +92,7 @@ enum ClipDockMotion {
         let influence = (cos(.pi * progress) + 1) / 2
         let direction: CGFloat = delta == 0 ? 0 : (delta < 0 ? -1 : 1)
         let push = direction * maximumPush * sin(.pi * progress) * influence
-        return ClipDockTransform(
+        return ClipboardRippleTransform(
             scale: 1 + (maximumScale - 1) * influence,
             lift: maximumLift * influence,
             horizontalOffset: push,
@@ -101,7 +101,7 @@ enum ClipDockMotion {
     }
 }
 
-private struct ClipDockScrollOffsetReader: NSViewRepresentable {
+private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
     @Binding var contentOffsetX: CGFloat
 
     func makeCoordinator() -> Coordinator {
@@ -167,7 +167,7 @@ private struct ClipDockScrollOffsetReader: NSViewRepresentable {
 }
 
 @MainActor
-final class ClipDockPointerState: ObservableObject {
+final class ClipboardRipplePointerState: ObservableObject {
     @Published private(set) var panelX: CGFloat?
 
     func update(screenX: CGFloat, panelFrame: NSRect) {
@@ -232,7 +232,7 @@ private enum CardImageCache {
 
 struct TimelineView: View {
     @ObservedObject var state: AppState
-    @ObservedObject var pointerState: ClipDockPointerState
+    @ObservedObject var pointerState: ClipboardRipplePointerState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @FocusState private var searchIsFocused: Bool
@@ -249,7 +249,7 @@ struct TimelineView: View {
                     footer
                 }
             }
-            .padding(.horizontal, ClipDockMotion.panelInset)
+            .padding(.horizontal, ClipboardRippleMotion.panelInset)
             .padding(.bottom, 12)
 
             if state.isCreatingPinboard {
@@ -289,7 +289,7 @@ struct TimelineView: View {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .strokeBorder(.white.opacity(reduceTransparency ? 0.16 : 0.38), lineWidth: 1)
         }
-        .padding(.top, ClipDockMotion.surfaceTopInset)
+        .padding(.top, ClipboardRippleMotion.surfaceTopInset)
     }
 
     private var dockControls: some View {
@@ -358,12 +358,12 @@ struct TimelineView: View {
         let records = state.filteredRecords
         return ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: ClipDockMotion.cardSpacing) {
+                LazyHStack(spacing: ClipboardRippleMotion.cardSpacing) {
                     if records.isEmpty {
                         emptyState
                     } else {
                         ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
-                            let transform = ClipDockMotion.transform(
+                            let transform = ClipboardRippleMotion.transform(
                                 for: index,
                                 pointerX: reduceMotion ? nil : dockContentPointerX
                             )
@@ -413,11 +413,11 @@ struct TimelineView: View {
                         }
                     }
                 }
-                .padding(.horizontal, ClipDockMotion.horizontalInset)
-                .padding(.top, ClipDockMotion.cardTopInset)
-                .padding(.bottom, ClipDockMotion.cardBottomInset)
+                .padding(.horizontal, ClipboardRippleMotion.horizontalInset)
+                .padding(.top, ClipboardRippleMotion.cardTopInset)
+                .padding(.bottom, ClipboardRippleMotion.cardBottomInset)
                 .background {
-                    ClipDockScrollOffsetReader(contentOffsetX: $dockContentOffsetX)
+                    ClipboardRippleScrollOffsetReader(contentOffsetX: $dockContentOffsetX)
                 }
             }
             .onChange(of: state.selectionRevealGeneration) { _, _ in
@@ -425,11 +425,11 @@ struct TimelineView: View {
                 proxy.scrollTo(records[state.selectedIndex].id, anchor: .center)
             }
         }
-        .frame(height: ClipDockMotion.cardTimelineHeight)
+        .frame(height: ClipboardRippleMotion.cardTimelineHeight)
     }
 
     private var dockContentPointerX: CGFloat? {
-        return ClipDockMotion.contentPointerX(
+        return ClipboardRippleMotion.contentPointerX(
             panelPointerX: pointerState.panelX,
             contentOffsetX: dockContentOffsetX
         )
@@ -581,7 +581,7 @@ private struct ClipboardCard: View {
                 .accessibilityLabel(record.sourceApplicationName ?? "未知来源")
             }
             .padding(.horizontal, 12)
-            .frame(width: ClipDockMotion.cardWidth, height: 56)
+            .frame(width: ClipboardRippleMotion.cardWidth, height: 56)
             .background(
                 LinearGradient(
                     colors: [accent, accent.opacity(0.84)],
@@ -599,7 +599,7 @@ private struct ClipboardCard: View {
                         .interpolation(.high)
                         .scaledToFit()
                         .frame(
-                            width: ClipDockMotion.cardWidth,
+                            width: ClipboardRippleMotion.cardWidth,
                             height: 148
                         )
                 } else {
@@ -619,7 +619,7 @@ private struct ClipboardCard: View {
                     .padding(12)
                 }
             }
-            .frame(width: ClipDockMotion.cardWidth, height: 148)
+            .frame(width: ClipboardRippleMotion.cardWidth, height: 148)
             .background(paperColor)
             .clipped()
 
@@ -639,7 +639,7 @@ private struct ClipboardCard: View {
             .frame(height: 28)
             .background(paperColor)
         }
-        .frame(width: ClipDockMotion.cardWidth, height: ClipDockMotion.cardHeight)
+        .frame(width: ClipboardRippleMotion.cardWidth, height: ClipboardRippleMotion.cardHeight)
         .background(paperColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
@@ -709,7 +709,7 @@ final class TimelinePanelController: NSObject, NSWindowDelegate {
     private(set) var targetApplication: NSRunningApplication?
 
     private let state: AppState
-    private let pointerState = ClipDockPointerState()
+    private let pointerState = ClipboardRipplePointerState()
     private var keyMonitor: Any?
     private var localPointerMonitor: Any?
     private var globalPointerMonitor: Any?
@@ -823,7 +823,7 @@ final class TimelinePanelController: NSObject, NSWindowDelegate {
         let visibleFrame = activeScreen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? panel.frame
         let width = min(max(visibleFrame.width - 32, 720), 1_420)
         let height = min(
-            ClipDockMotion.panelHeight(showsShortcutHints: state.showsShortcutHints),
+            ClipboardRippleMotion.panelHeight(showsShortcutHints: state.showsShortcutHints),
             visibleFrame.height - 28
         )
         return NSRect(

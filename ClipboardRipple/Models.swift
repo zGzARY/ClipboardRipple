@@ -147,7 +147,7 @@ final class PinboardRecord {
 }
 
 extension NSImage {
-    func clipDeckPNGData() -> Data? {
+    func clipboardRipplePNGData() -> Data? {
         guard let tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffRepresentation)
         else { return nil }

@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A00000000000000000000001"
-               BuildableName = "ClipDock.app"
-               BlueprintName = "ClipDock"
-               ReferencedContainer = "container:ClipDock.xcodeproj">
+               BuildableName = "Clipboard Ripple.app"
+               BlueprintName = "ClipboardRipple"
+               ReferencedContainer = "container:ClipboardRipple.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -35,9 +35,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A00000000000000000000002"
-               BuildableName = "ClipDockTests.xctest"
-               BlueprintName = "ClipDockTests"
-               ReferencedContainer = "container:ClipDock.xcodeproj">
+               BuildableName = "ClipboardRippleTests.xctest"
+               BlueprintName = "ClipboardRippleTests"
+               ReferencedContainer = "container:ClipboardRipple.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -56,9 +56,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A00000000000000000000001"
-            BuildableName = "ClipDock.app"
-            BlueprintName = "ClipDock"
-            ReferencedContainer = "container:ClipDock.xcodeproj">
+            BuildableName = "Clipboard Ripple.app"
+            BlueprintName = "ClipboardRipple"
+            ReferencedContainer = "container:ClipboardRipple.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A00000000000000000000001"
-            BuildableName = "ClipDock.app"
-            BlueprintName = "ClipDock"
-            ReferencedContainer = "container:ClipDock.xcodeproj">
+            BuildableName = "Clipboard Ripple.app"
+            BlueprintName = "ClipboardRipple"
+            ReferencedContainer = "container:ClipboardRipple.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

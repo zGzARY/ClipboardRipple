@@ -2,34 +2,39 @@ import AppKit
 import Carbon
 import UniformTypeIdentifiers
 import XCTest
-@testable import ClipDock
+@testable import ClipboardRipple
 
 @MainActor
-final class ClipDockTests: XCTestCase {
-    func testLegacyDefaultsMigrateWithoutOverwritingClipDockValues() throws {
-        let suiteName = "ClipDockTests.\(UUID().uuidString)"
+final class ClipboardRippleTests: XCTestCase {
+    func testLegacyDefaultsMigrateWithoutOverwritingClipboardRippleValues() throws {
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         defaults.set(30, forKey: "retentionDays")
 
         AppDelegate.migrateLegacyDefaults(
             into: defaults,
-            legacyDomain: [
-                "retentionDays": 1,
-                "shortcutDefinition": "controlV",
-                "showsShortcutHints": false,
+            legacyDomains: [
+                [
+                    "retentionDays": 1,
+                    "shortcutDefinition": "controlV",
+                ],
+                [
+                    "shortcutDefinition": "commandV",
+                    "showsShortcutHints": false,
+                ],
             ]
         )
 
         XCTAssertEqual(defaults.integer(forKey: "retentionDays"), 30)
         XCTAssertEqual(defaults.string(forKey: "shortcutDefinition"), "controlV")
         XCTAssertFalse(defaults.bool(forKey: "showsShortcutHints"))
-        XCTAssertTrue(defaults.bool(forKey: "didMigrateClipDeckDefaultsV1"))
+        XCTAssertTrue(defaults.bool(forKey: "didMigrateClipboardRippleDefaultsV1"))
     }
 
     func testLegacyStoreFilesMigrateAtomicallyAndKeepRollbackCopy() throws {
         let baseURL = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "ClipDockTests-\(UUID().uuidString)",
+            "ClipboardRippleTests-\(UUID().uuidString)",
             isDirectory: true
         )
         let legacyURL = baseURL.appendingPathComponent("ClipDeck", isDirectory: true)
@@ -47,29 +52,53 @@ final class ClipDockTests: XCTestCase {
 
         try HistoryStore.migrateLegacyStoreIfNeeded(in: baseURL)
 
-        let migratedURL = baseURL.appendingPathComponent("ClipDock", isDirectory: true)
+        let migratedURL = baseURL.appendingPathComponent("ClipboardRipple", isDirectory: true)
         XCTAssertEqual(
-            try Data(contentsOf: migratedURL.appendingPathComponent("ClipDock.store")),
+            try Data(contentsOf: migratedURL.appendingPathComponent("ClipboardRipple.store")),
             marker
         )
         XCTAssertEqual(
-            try Data(contentsOf: migratedURL.appendingPathComponent(".ClipDock_SUPPORT/image")),
+            try Data(contentsOf: migratedURL.appendingPathComponent(".ClipboardRipple_SUPPORT/image")),
             marker
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
+    }
+
+    func testClipDockStoreMigratesToClipboardRippleBeforeClipDeckFallback() throws {
+        let baseURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ClipboardRippleTests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let clipDockURL = baseURL.appendingPathComponent("ClipDock", isDirectory: true)
+        let clipDeckURL = baseURL.appendingPathComponent("ClipDeck", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: baseURL) }
+
+        try FileManager.default.createDirectory(at: clipDockURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: clipDeckURL, withIntermediateDirectories: true)
+        try Data("clipdock".utf8).write(to: clipDockURL.appendingPathComponent("ClipDock.store"))
+        try Data("clipdeck".utf8).write(to: clipDeckURL.appendingPathComponent("ClipDeck.store"))
+
+        try HistoryStore.migrateLegacyStoreIfNeeded(in: baseURL)
+
+        let migratedStore = baseURL
+            .appendingPathComponent("ClipboardRipple", isDirectory: true)
+            .appendingPathComponent("ClipboardRipple.store")
+        XCTAssertEqual(try Data(contentsOf: migratedStore), Data("clipdock".utf8))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: clipDockURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: clipDeckURL.path))
     }
 
     func testPlainTextCaptureAndRoundTrip() throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
-        XCTAssertTrue(pasteboard.setString("ClipDock 测试文本", forType: .string))
+        XCTAssertTrue(pasteboard.setString("Clipboard Ripple 测试文本", forType: .string))
 
         let captured = try ClipboardPayload.capture(from: pasteboard)
 
         XCTAssertEqual(captured.kind, .text)
-        XCTAssertEqual(captured.title, "ClipDock 测试文本")
-        XCTAssertEqual(captured.payload.preferredPlainText, "ClipDock 测试文本")
+        XCTAssertEqual(captured.title, "Clipboard Ripple 测试文本")
+        XCTAssertEqual(captured.payload.preferredPlainText, "Clipboard Ripple 测试文本")
         XCTAssertEqual(
             try ClipboardPayload.decoded(from: captured.payload.encoded()),
             captured.payload
@@ -253,17 +282,17 @@ final class ClipDockTests: XCTestCase {
     }
 
     func testShortcutHintsControlPanelHeight() {
-        XCTAssertEqual(ClipDockMotion.panelHeight(showsShortcutHints: true), 380)
-        XCTAssertEqual(ClipDockMotion.panelHeight(showsShortcutHints: false), 350)
+        XCTAssertEqual(ClipboardRippleMotion.panelHeight(showsShortcutHints: true), 380)
+        XCTAssertEqual(ClipboardRippleMotion.panelHeight(showsShortcutHints: false), 350)
         XCTAssertEqual(
-            ClipDockMotion.cardTimelineHeight,
-            ClipDockMotion.cardTopInset + ClipDockMotion.cardHeight + ClipDockMotion.cardBottomInset
+            ClipboardRippleMotion.cardTimelineHeight,
+            ClipboardRippleMotion.cardTopInset + ClipboardRippleMotion.cardHeight + ClipboardRippleMotion.cardBottomInset
         )
     }
 
     func testShortcutHintsDefaultOnAndPersistOff() throws {
         let store = try HistoryStore(inMemory: true)
-        let suiteName = "ClipDockTests.\(UUID().uuidString)"
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
@@ -275,13 +304,13 @@ final class ClipDockTests: XCTestCase {
         XCTAssertFalse(restoredState.showsShortcutHints)
     }
 
-    func testClipDockMotionIsIdleWithoutPointer() {
-        XCTAssertEqual(ClipDockMotion.transform(for: 0, pointerX: nil), .identity)
+    func testClipboardRippleMotionIsIdleWithoutPointer() {
+        XCTAssertEqual(ClipboardRippleMotion.transform(for: 0, pointerX: nil), .identity)
     }
 
-    func testClipDockMotionPeaksAtHoveredCardCenter() {
-        let center = ClipDockMotion.centerX(for: 2)
-        let transform = ClipDockMotion.transform(for: 2, pointerX: center)
+    func testClipboardRippleMotionPeaksAtHoveredCardCenter() {
+        let center = ClipboardRippleMotion.centerX(for: 2)
+        let transform = ClipboardRippleMotion.transform(for: 2, pointerX: center)
 
         XCTAssertEqual(transform.scale, 1.15, accuracy: 0.000_1)
         XCTAssertEqual(transform.lift, 12, accuracy: 0.000_1)
@@ -289,10 +318,10 @@ final class ClipDockTests: XCTestCase {
         XCTAssertEqual(transform.influence, 1, accuracy: 0.000_1)
     }
 
-    func testClipDockMotionMagnifiesNeighborsSymmetrically() {
-        let pointerX = ClipDockMotion.centerX(for: 2)
-        let left = ClipDockMotion.transform(for: 1, pointerX: pointerX)
-        let right = ClipDockMotion.transform(for: 3, pointerX: pointerX)
+    func testClipboardRippleMotionMagnifiesNeighborsSymmetrically() {
+        let pointerX = ClipboardRippleMotion.centerX(for: 2)
+        let left = ClipboardRippleMotion.transform(for: 1, pointerX: pointerX)
+        let right = ClipboardRippleMotion.transform(for: 3, pointerX: pointerX)
 
         XCTAssertGreaterThan(left.scale, 1)
         XCTAssertLessThan(left.scale, 1.15)
@@ -303,21 +332,21 @@ final class ClipDockTests: XCTestCase {
         XCTAssertGreaterThan(right.horizontalOffset, 0)
     }
 
-    func testClipDockMotionDoesNotAffectDistantCards() {
-        let pointerX = ClipDockMotion.centerX(for: 0)
-        XCTAssertEqual(ClipDockMotion.transform(for: 3, pointerX: pointerX), .identity)
+    func testClipboardRippleMotionDoesNotAffectDistantCards() {
+        let pointerX = ClipboardRippleMotion.centerX(for: 0)
+        XCTAssertEqual(ClipboardRippleMotion.transform(for: 3, pointerX: pointerX), .identity)
     }
 
-    func testClipDockPanelPointerTracksScrollOffset() {
+    func testClipboardRipplePanelPointerTracksScrollOffset() {
         XCTAssertEqual(
-            ClipDockMotion.contentPointerX(panelPointerX: 420, contentOffsetX: 180),
+            ClipboardRippleMotion.contentPointerX(panelPointerX: 420, contentOffsetX: 180),
             582
         )
-        XCTAssertNil(ClipDockMotion.contentPointerX(panelPointerX: nil, contentOffsetX: 180))
+        XCTAssertNil(ClipboardRippleMotion.contentPointerX(panelPointerX: nil, contentOffsetX: 180))
     }
 
-    func testClipDockPointerProjectsWholeScreenToPanelEdges() {
-        let pointer = ClipDockPointerState()
+    func testClipboardRipplePointerProjectsWholeScreenToPanelEdges() {
+        let pointer = ClipboardRipplePointerState()
         let panelFrame = NSRect(x: 200, y: 100, width: 1_000, height: 460)
 
         pointer.update(screenX: 700, panelFrame: panelFrame)
@@ -474,7 +503,7 @@ final class ClipDockTests: XCTestCase {
 
     func testRetentionClampsThroughAppState() throws {
         let store = try HistoryStore(inMemory: true)
-        let suiteName = "ClipDockTests.\(UUID().uuidString)"
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let state = AppState(store: store, defaults: defaults)
@@ -493,7 +522,7 @@ final class ClipDockTests: XCTestCase {
 
     func testPasteBehaviorDefaultsToPermissionFreeCopyMode() throws {
         let store = try HistoryStore(inMemory: true)
-        let suiteName = "ClipDockTests.\(UUID().uuidString)"
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
@@ -544,7 +573,7 @@ final class ClipDockTests: XCTestCase {
         second.capturedAt = Date(timeIntervalSinceNow: -1)
         try store.save()
 
-        let suiteName = "ClipDockTests.\(UUID().uuidString)"
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let state = AppState(store: store, defaults: defaults)
@@ -573,7 +602,7 @@ final class ClipDockTests: XCTestCase {
             pasteboard.setString(text, forType: .string)
             _ = try store.upsert(ClipboardPayload.capture(from: pasteboard), sourceApplication: nil)
         }
-        let suiteName = "ClipDockTests.\(UUID().uuidString)"
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let state = AppState(store: store, defaults: defaults)
