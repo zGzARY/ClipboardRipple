@@ -453,18 +453,38 @@ final class ClipboardRippleTests: XCTestCase {
         XCTAssertLessThan(transform.opacity, 1)
     }
 
-    func testClipboardRipplePanelPointerTracksScrollOffset() {
+    func testClipboardRippleMotionUsesViewportCardCenterDirectly() {
         XCTAssertEqual(
-            ClipboardRippleMotion.contentPointerX(panelPointerX: 420, contentOffsetX: 180),
-            582
+            ClipboardRippleMotion.transform(cardCenterX: 420, pointerX: 420),
+            ClipboardRippleMotion.transform(
+                for: 0,
+                pointerX: ClipboardRippleMotion.centerX(for: 0)
+            )
         )
-        XCTAssertNil(ClipboardRippleMotion.contentPointerX(panelPointerX: nil, contentOffsetX: 180))
+        XCTAssertEqual(
+            ClipboardRippleMotion.transform(cardCenterX: 420, pointerX: nil),
+            .identity
+        )
     }
 
-    func testClipboardRippleContentOffsetTracksSwiftUIScrollCoordinates() {
-        XCTAssertEqual(ClipboardRippleMotion.contentOffsetX(contentMinX: 0), 0)
-        XCTAssertEqual(ClipboardRippleMotion.contentOffsetX(contentMinX: -180), 180)
-        XCTAssertEqual(ClipboardRippleMotion.contentOffsetX(contentMinX: 12), 0)
+    func testEdgeRetreatUsesViewportCardCenterDirectly() {
+        let viewportWidth: CGFloat = 1_000
+        let viewportCenter: CGFloat = 70
+        let index = 2
+
+        XCTAssertEqual(
+            ClipboardRippleMotion.edgeTransform(
+                viewportCenter: viewportCenter,
+                viewportWidth: viewportWidth,
+                reduceMotion: false
+            ),
+            ClipboardRippleMotion.edgeTransform(
+                for: index,
+                contentOffsetX: ClipboardRippleMotion.centerX(for: index) - viewportCenter,
+                viewportWidth: viewportWidth,
+                reduceMotion: false
+            )
+        )
     }
 
     func testClipboardRipplePointerProjectsWholeScreenToPanelEdges() {
