@@ -259,6 +259,7 @@ final class ClipboardRippleTests: XCTestCase {
 
     func testCoarseRelativeTimeBuckets() {
         let now = Date(timeIntervalSince1970: 1_000_000)
+        let strings = AppStrings(language: .english)
         let cases: [(TimeInterval, String)] = [
             (10, "just now"),
             (60, "1 min ago"),
@@ -275,10 +276,36 @@ final class ClipboardRippleTests: XCTestCase {
 
         for (age, expected) in cases {
             XCTAssertEqual(
-                CoarseRelativeTime.text(for: now.addingTimeInterval(-age), relativeTo: now),
+                CoarseRelativeTime.text(
+                    for: now.addingTimeInterval(-age),
+                    relativeTo: now,
+                    using: strings
+                ),
                 expected
             )
         }
+    }
+
+    func testCoarseRelativeTimeUsesSelectedLanguage() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let chinese = AppStrings(language: .simplifiedChinese)
+
+        XCTAssertEqual(
+            CoarseRelativeTime.text(
+                for: now.addingTimeInterval(-1_200),
+                relativeTo: now,
+                using: chinese
+            ),
+            "20 分钟前"
+        )
+        XCTAssertEqual(
+            CoarseRelativeTime.text(
+                for: now.addingTimeInterval(-172_800),
+                relativeTo: now,
+                using: chinese
+            ),
+            "2 天前"
+        )
     }
 
     func testShortcutHintsControlPanelHeight() {
@@ -529,7 +556,74 @@ final class ClipboardRippleTests: XCTestCase {
         let state = AppState(store: store, defaults: defaults)
 
         XCTAssertEqual(state.pasteBehavior, .copyToClipboard)
-        XCTAssertEqual(state.pasteBehavior.displayName, "复制到剪贴板（无需权限）")
+        state.appLanguage = .simplifiedChinese
+        XCTAssertEqual(
+            state.pasteBehavior.displayName(using: state.strings),
+            "复制到剪贴板（无需权限）"
+        )
+    }
+
+    func testLanguageDefaultsFromSystemAndPersistsUserChoice() throws {
+        let store = try HistoryStore(inMemory: true)
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(
+            AppLanguage.resolved(defaults: defaults, preferredLanguages: ["zh-Hans-CN"]),
+            .simplifiedChinese
+        )
+        XCTAssertEqual(
+            AppLanguage.resolved(defaults: defaults, preferredLanguages: ["fr-FR"]),
+            .english
+        )
+
+        let state = AppState(store: store, defaults: defaults)
+        state.appLanguage = .simplifiedChinese
+        let restored = AppState(store: store, defaults: defaults)
+        XCTAssertEqual(restored.appLanguage, .simplifiedChinese)
+    }
+
+    func testLocalizationTablesHaveMatchingKeys() throws {
+        func table(for language: AppLanguage) throws -> [String: String] {
+            let url = try XCTUnwrap(
+                Bundle.main.url(
+                    forResource: "Localizable",
+                    withExtension: "strings",
+                    subdirectory: nil,
+                    localization: language.rawValue
+                )
+            )
+            return try XCTUnwrap(
+                NSDictionary(contentsOf: url) as? [String: String]
+            )
+        }
+
+        let english = try table(for: .english)
+        let chinese = try table(for: .simplifiedChinese)
+        XCTAssertEqual(Set(english.keys), Set(chinese.keys))
+        XCTAssertFalse(english.isEmpty)
+        XCTAssertFalse(english.contains { $0.key == $0.value })
+        XCTAssertFalse(chinese.contains { $0.key == $0.value })
+    }
+
+    func testBuiltInPinboardNameSwitchesLanguagesWithoutRenamingUserData() throws {
+        let store = try HistoryStore(inMemory: true)
+        let suiteName = "ClipboardRippleTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(AppLanguage.english.rawValue, forKey: AppLanguage.defaultsKey)
+
+        let state = AppState(store: store, defaults: defaults)
+        let builtIn = try XCTUnwrap(state.pinboards.first)
+        XCTAssertEqual(state.pinboardDisplayName(builtIn), "Favorites")
+
+        state.appLanguage = .simplifiedChinese
+        XCTAssertEqual(state.pinboardDisplayName(builtIn), "收藏")
+
+        state.createPinboard(name: "Research", colorHex: "2F95FF")
+        let userBoard = try XCTUnwrap(state.pinboards.first { $0.name == "Research" })
+        XCTAssertEqual(state.pinboardDisplayName(userBoard), "Research")
     }
 
     func testCopyModeRestoresClipboardWithoutAccessibility() throws {

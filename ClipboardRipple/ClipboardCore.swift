@@ -4,18 +4,9 @@ import Foundation
 import SwiftData
 import UniformTypeIdentifiers
 
-enum ClipboardCaptureError: LocalizedError {
+enum ClipboardCaptureError: Error {
     case tooLarge(Int)
     case noSupportedContent
-
-    var errorDescription: String? {
-        switch self {
-        case let .tooLarge(bytes):
-            "剪贴内容过大（\(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))）"
-        case .noSupportedContent:
-            "没有可保存的剪贴内容"
-        }
-    }
 }
 
 enum PrivacyFilter {
@@ -135,7 +126,7 @@ extension ClipboardPayload {
                 .filter { $0.type == NSPasteboard.PasteboardType.fileURL.rawValue }
                 .compactMap { String(data: $0.data, encoding: .utf8) }
                 .compactMap { URL(string: $0)?.lastPathComponent }
-            let title = fileNames.first ?? (items.count > 1 ? "\(items.count) 个文件" : "文件")
+            let title = fileNames.first ?? (items.count > 1 ? "\(items.count) files" : "File")
             return (.file, title, limitedSearchText(fileNames.joined(separator: " ")), nil)
         }
 
@@ -143,7 +134,7 @@ extension ClipboardPayload {
             imageTypes.contains($0.type)
         }), let image = NSImage(data: imageRepresentation.data) {
             let sizeText = "\(Int(image.size.width)) × \(Int(image.size.height))"
-            return (.image, "图片 \(sizeText)", sizeText, thumbnailData(for: image))
+            return (.image, "Image \(sizeText)", sizeText, thumbnailData(for: image))
         }
 
         if let urlString = stringValue(in: representations, types: [
@@ -163,19 +154,19 @@ extension ClipboardPayload {
                 let title = url.host(percentEncoded: false) ?? String(clean.prefix(80))
                 return (.link, title, limitedSearchText(clean), nil)
             }
-            let firstLine = clean.split(whereSeparator: \.isNewline).first.map(String.init) ?? "文本"
+            let firstLine = clean.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Text"
             let title = String(firstLine.prefix(80))
             let kind: ClipboardContentKind = rawTypes.contains(NSPasteboard.PasteboardType.rtf.rawValue) ||
                 rawTypes.contains(NSPasteboard.PasteboardType.html.rawValue) ||
                 clean.contains(where: \.isNewline) ? .richText : .text
-            return (kind, title.isEmpty ? kind.displayName : title, limitedSearchText(clean), nil)
+            return (kind, title.isEmpty ? kind.storageName : title, limitedSearchText(clean), nil)
         }
 
         if rawTypes.contains("NSColorPboardType") {
-            return (.color, "颜色", "颜色", nil)
+            return (.color, "Color", "Color", nil)
         }
 
-        return (.unknown, "剪贴内容", rawTypes.sorted().joined(separator: " "), nil)
+        return (.unknown, "Clipboard Content", rawTypes.sorted().joined(separator: " "), nil)
     }
 
     private static func limitedSearchText(_ text: String) -> String {
@@ -228,7 +219,7 @@ extension ClipboardPayload {
 @MainActor
 final class PasteboardMonitor {
     var onCapture: ((CapturedClipboardContent, NSRunningApplication?) -> Void)?
-    var onSkippedContent: ((String) -> Void)?
+    var onSkippedContent: ((Error) -> Void)?
     var isPaused = false
     var excludedBundleIdentifiers: Set<String> = []
 
@@ -283,7 +274,7 @@ final class PasteboardMonitor {
         } catch ClipboardCaptureError.noSupportedContent {
             return
         } catch {
-            onSkippedContent?(error.localizedDescription)
+            onSkippedContent?(error)
         }
     }
 }
@@ -456,9 +447,12 @@ final class HistoryStore {
         try context.save()
     }
 
-    func createPinboard(name: String, colorHex: String) throws {
-        context.insert(PinboardRecord(name: name, colorHex: colorHex))
+    @discardableResult
+    func createPinboard(name: String, colorHex: String) throws -> PinboardRecord {
+        let pinboard = PinboardRecord(name: name, colorHex: colorHex)
+        context.insert(pinboard)
         try context.save()
+        return pinboard
     }
 
     func deletePinboard(_ pinboard: PinboardRecord) throws {

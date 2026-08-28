@@ -15,6 +15,9 @@
 		B00000000000000000000007 /* SettingsUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000007 /* SettingsUI.swift */; };
 		B00000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000009 /* Assets.xcassets */; };
 		B00000000000000000000009 /* ClipboardRippleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000010 /* ClipboardRippleTests.swift */; };
+		B00000000000000000000010 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000013 /* Localization.swift */; };
+		B00000000000000000000011 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000014 /* Localizable.strings */; };
+		B00000000000000000000012 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000015 /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -40,6 +43,9 @@
 		F00000000000000000000010 /* ClipboardRippleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardRippleTests.swift; sourceTree = "<group>"; };
 		F00000000000000000000011 /* Clipboard Ripple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Clipboard Ripple.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000012 /* ClipboardRippleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClipboardRippleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F00000000000000000000013 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		F00000000000000000000014 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		F00000000000000000000015 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +73,9 @@
 				F00000000000000000000005 /* AppState.swift */,
 				F00000000000000000000006 /* TimelineUI.swift */,
 				F00000000000000000000007 /* SettingsUI.swift */,
+				F00000000000000000000013 /* Localization.swift */,
+				F00000000000000000000014 /* Localizable.strings */,
+				F00000000000000000000015 /* Localizable.strings */,
 				F00000000000000000000009 /* Assets.xcassets */,
 				F00000000000000000000008 /* Info.plist */,
 			);
@@ -137,9 +146,9 @@
 			};
 			buildConfigurationList = L00000000000000000000001 /* Build configuration list for PBXProject "ClipboardRipple" */;
 			compatibilityVersion = "Xcode 14.0";
-			developmentRegion = zh_CN;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (Base, en, zh_CN);
+			knownRegions = (Base, en, "zh-Hans");
 			mainGroup = G00000000000000000000001;
 			productRefGroup = G00000000000000000000004 /* Products */;
 			projectDirPath = "";
@@ -149,7 +158,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		D00000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000008 /* Assets.xcassets in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		D00000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000008 /* Assets.xcassets in Resources */, B00000000000000000000011 /* Localizable.strings in Resources */, B00000000000000000000012 /* Localizable.strings in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 		D00000000000000000000005 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
@@ -165,6 +174,7 @@
 				B00000000000000000000005 /* AppState.swift in Sources */,
 				B00000000000000000000006 /* TimelineUI.swift in Sources */,
 				B00000000000000000000007 /* SettingsUI.swift in Sources */,
+				B00000000000000000000010 /* Localization.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -185,14 +195,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ClipboardRipple/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.clipboardripple.local;
 				PRODUCT_MODULE_NAME = ClipboardRipple;
 				PRODUCT_NAME = "Clipboard Ripple";
@@ -208,13 +218,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ClipboardRipple/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.clipboardripple.local;
 				PRODUCT_MODULE_NAME = ClipboardRipple;
 				PRODUCT_NAME = "Clipboard Ripple";

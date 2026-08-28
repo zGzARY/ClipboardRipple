@@ -22,20 +22,26 @@ struct VisualEffectView: NSViewRepresentable {
 }
 
 enum CoarseRelativeTime {
-    static func text(for date: Date, relativeTo now: Date = Date()) -> String {
+    static func text(
+        for date: Date,
+        relativeTo now: Date = Date(),
+        using strings: AppStrings
+    ) -> String {
         let seconds = max(0, now.timeIntervalSince(date))
         switch seconds {
-        case ..<60: return "just now"
-        case ..<180: return "1 min ago"
-        case ..<300: return "3 min ago"
-        case ..<600: return "5 min ago"
-        case ..<1_200: return "10 min ago"
-        case ..<1_800: return "20 min ago"
-        case ..<3_600: return "30 min ago"
-        case ..<86_400: return "\(Int(seconds / 3_600)) h ago"
+        case ..<60: return strings.text("time.just_now")
+        case ..<180: return strings.text("time.one_minute_ago")
+        case ..<300: return strings.text("time.three_minutes_ago")
+        case ..<600: return strings.text("time.five_minutes_ago")
+        case ..<1_200: return strings.text("time.ten_minutes_ago")
+        case ..<1_800: return strings.text("time.twenty_minutes_ago")
+        case ..<3_600: return strings.text("time.thirty_minutes_ago")
+        case ..<86_400: return strings.format("time.hours_ago", Int(seconds / 3_600))
         default:
             let days = Int(seconds / 86_400)
-            return days == 1 ? "1 day ago" : "\(days) days ago"
+            return days == 1
+                ? strings.text("time.one_day_ago")
+                : strings.format("time.days_ago", days)
         }
     }
 }
@@ -99,6 +105,7 @@ enum ClipboardRippleMotion {
             influence: influence
         )
     }
+
 }
 
 private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
@@ -257,12 +264,13 @@ struct TimelineView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { state.isCreatingPinboard = false }
-                NewPinboardView { name, color in
+                NewPinboardView(strings: state.strings) { name, color in
                     state.createPinboard(name: name, colorHex: color)
                     state.isCreatingPinboard = false
                 } onCancel: {
                     state.isCreatingPinboard = false
                 }
+                .environment(\.locale, state.appLanguage.locale)
                 .background(
                     Color(nsColor: .windowBackgroundColor),
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -273,6 +281,7 @@ struct TimelineView: View {
         .onChange(of: state.searchFocusGeneration) { _, _ in
             searchIsFocused = true
         }
+        .environment(\.locale, state.appLanguage.locale)
     }
 
     private var dockSurface: some View {
@@ -293,11 +302,12 @@ struct TimelineView: View {
     }
 
     private var dockControls: some View {
-        HStack(spacing: 10) {
+        let strings = state.strings
+        return HStack(spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("搜索内容、来源应用或类型", text: $state.searchText)
+                TextField(strings.text("timeline.search_placeholder"), text: $state.searchText)
                     .textFieldStyle(.plain)
                     .focused($searchIsFocused)
             }
@@ -308,7 +318,7 @@ struct TimelineView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     BoardChip(
-                        title: "剪贴板",
+                        title: strings.text("timeline.clipboard"),
                         color: .secondary,
                         symbol: "clock.arrow.circlepath",
                         selected: state.selectedPinboardID == nil
@@ -318,7 +328,7 @@ struct TimelineView: View {
 
                     ForEach(state.pinboards) { board in
                         BoardChip(
-                            title: board.name,
+                            title: state.pinboardDisplayName(board),
                             color: Color(hex: board.colorHex),
                             symbol: "pin.fill",
                             selected: state.selectedPinboardID == board.id
@@ -326,7 +336,10 @@ struct TimelineView: View {
                             state.selectedPinboardID = board.id
                         }
                         .contextMenu {
-                            Button("删除 \(board.name)", role: .destructive) {
+                            Button(
+                                strings.format("action.delete_named", state.pinboardDisplayName(board)),
+                                role: .destructive
+                            ) {
                                 state.deletePinboard(board)
                             }
                         }
@@ -367,7 +380,11 @@ struct TimelineView: View {
                                 for: index,
                                 pointerX: reduceMotion ? nil : dockContentPointerX
                             )
-                            ClipboardCard(record: record, selected: index == state.selectedIndex)
+                            ClipboardCard(
+                                record: record,
+                                selected: index == state.selectedIndex,
+                                strings: state.strings
+                            )
                                 .scaleEffect(transform.scale, anchor: .bottom)
                                 .offset(x: transform.horizontalOffset, y: -transform.lift)
                                 .zIndex(transform.influence)
@@ -384,28 +401,36 @@ struct TimelineView: View {
                                     }
                                 )
                                 .contextMenu {
-                                    Button(state.pasteBehavior.actionName) {
+                                    Button(state.pasteBehavior.actionName(using: state.strings)) {
                                         state.select(index: index)
                                         state.pasteSelected()
                                     }
-                                    Button("\(state.pasteBehavior.actionName)为纯文本") {
+                                    Button(
+                                        state.strings.format(
+                                            "action.as_plain_text",
+                                            state.pasteBehavior.actionName(using: state.strings)
+                                        )
+                                    ) {
                                         state.select(index: index)
                                         state.pasteSelected(asPlainText: true)
                                     }
                                     if !state.pinboards.isEmpty {
-                                        Menu("固定到 Pinboard") {
+                                        Menu(state.strings.text("action.pin_to_pinboard")) {
                                             ForEach(state.pinboards) { board in
                                                 Button {
                                                     state.togglePin(record, pinboardID: board.id)
                                                 } label: {
                                                     let pinned = record.pinboardIDs.contains(board.id)
-                                                    Label(board.name, systemImage: pinned ? "checkmark" : "pin")
+                                                    Label(
+                                                        state.pinboardDisplayName(board),
+                                                        systemImage: pinned ? "checkmark" : "pin"
+                                                    )
                                                 }
                                             }
                                         }
                                     }
                                     Divider()
-                                    Button("删除", role: .destructive) {
+                                    Button(state.strings.text("action.delete"), role: .destructive) {
                                         state.select(index: index)
                                         state.deleteSelected()
                                     }
@@ -436,12 +461,21 @@ struct TimelineView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 9) {
+        let strings = state.strings
+        return VStack(spacing: 9) {
             Image(systemName: state.searchText.isEmpty ? "square.on.square.dashed" : "magnifyingglass")
                 .font(.system(size: 30, weight: .light))
-            Text(state.searchText.isEmpty ? "复制一些内容，卡片会出现在这里" : "没有匹配的剪贴内容")
+            Text(
+                state.searchText.isEmpty
+                    ? strings.text("timeline.empty_title")
+                    : strings.text("timeline.no_results_title")
+            )
                 .font(.headline)
-            Text(state.searchText.isEmpty ? "默认保留 1 天，可在设置中调整" : "尝试更短的关键词或切回剪贴板")
+            Text(
+                state.searchText.isEmpty
+                    ? strings.text("timeline.empty_subtitle")
+                    : strings.text("timeline.no_results_subtitle")
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -455,10 +489,10 @@ struct TimelineView: View {
                 Label(notice, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             } else if state.isPaused {
-                Label("捕获已暂停", systemImage: "pause.circle.fill")
+                Label(state.strings.text("timeline.capture_paused"), systemImage: "pause.circle.fill")
                     .foregroundStyle(.orange)
             } else {
-                Label("正在本地保存剪贴内容", systemImage: "lock.fill")
+                Label(state.strings.text("timeline.saving_locally"), systemImage: "lock.fill")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -475,8 +509,8 @@ struct TimelineView: View {
     }
 
     private var footerShortcutText: String {
-        let action = state.pasteBehavior.actionName
-        return "← → 选择   双击 插入   ⇧双击 纯文本   ↩ \(action)   ⇧↩ 纯文本   ⌘1…9 快速\(action)"
+        let action = state.pasteBehavior.actionName(using: state.strings)
+        return state.strings.format("timeline.shortcut_hint", action, action)
     }
 }
 
@@ -505,6 +539,7 @@ private struct BoardChip: View {
 private struct ClipboardCard: View {
     let record: ClipboardRecord
     let selected: Bool
+    let strings: AppStrings
 
     private var accent: Color {
         switch record.kind {
@@ -537,15 +572,15 @@ private struct ClipboardCard: View {
     private var detailLabel: String {
         switch record.kind {
         case .text, .richText, .link:
-            "\(record.searchableText.count) 字符"
+            strings.format("timeline.characters", record.searchableText.count)
         case .image:
             record.searchableText
         case .file:
-            "文件"
+            strings.text("content.file")
         case .color:
-            "颜色"
+            strings.text("content.color")
         case .unknown:
-            record.kind.displayName
+            record.kind.displayName(using: strings)
         }
     }
 
@@ -553,9 +588,9 @@ private struct ClipboardCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(record.kind.displayName)
+                    Text(record.kind.displayName(using: strings))
                         .font(.system(size: 15, weight: .bold))
-                    Text(CoarseRelativeTime.text(for: record.capturedAt))
+                    Text(CoarseRelativeTime.text(for: record.capturedAt, using: strings))
                         .font(.caption2)
                         .opacity(0.82)
                 }
@@ -577,8 +612,8 @@ private struct ClipboardCard: View {
                 .padding(4)
                 .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-                .help(record.sourceApplicationName ?? "未知来源")
-                .accessibilityLabel(record.sourceApplicationName ?? "未知来源")
+                .help(record.sourceApplicationName ?? strings.text("timeline.unknown_source"))
+                .accessibilityLabel(record.sourceApplicationName ?? strings.text("timeline.unknown_source"))
             }
             .padding(.horizontal, 12)
             .frame(width: ClipboardRippleMotion.cardWidth, height: 56)
@@ -604,7 +639,7 @@ private struct ClipboardCard: View {
                         )
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(record.title)
+                        Text(record.displayTitle(using: strings))
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.black.opacity(0.84))
                             .lineLimit(2)
@@ -624,7 +659,7 @@ private struct ClipboardCard: View {
             .clipped()
 
             HStack(spacing: 6) {
-                Text(record.sourceApplicationName ?? "未知来源")
+                Text(record.sourceApplicationName ?? strings.text("timeline.unknown_source"))
                     .lineLimit(1)
                 Spacer()
                 if record.isPinned {
@@ -651,6 +686,7 @@ private struct ClipboardCard: View {
 }
 
 private struct NewPinboardView: View {
+    let strings: AppStrings
     let onCreate: (String, String) -> Void
     let onCancel: () -> Void
     @State private var name = ""
@@ -661,9 +697,9 @@ private struct NewPinboardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("新建 Pinboard")
+            Text(strings.text("pinboard.new"))
                 .font(.title2.weight(.semibold))
-            TextField("名称", text: $name)
+            TextField(strings.text("pinboard.name"), text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($nameIsFocused)
             HStack {
@@ -683,9 +719,9 @@ private struct NewPinboardView: View {
             }
             HStack {
                 Spacer()
-                Button("取消", action: onCancel)
+                Button(strings.text("pinboard.cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("创建") {
+                Button(strings.text("pinboard.create")) {
                     onCreate(name, selectedColor)
                 }
                 .keyboardShortcut(.defaultAction)

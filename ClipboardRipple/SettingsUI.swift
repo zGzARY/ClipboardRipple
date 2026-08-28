@@ -12,65 +12,79 @@ struct SettingsView: View {
     @State private var operationError: String?
 
     var body: some View {
+        let strings = state.strings
         Form {
-            Section("常规") {
+            Section(strings.text("settings.general")) {
+                Picker(strings.text("settings.language"), selection: $state.appLanguage) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.selectionLabel).tag(language)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 Stepper(value: $state.retentionDays, in: 1 ... 30) {
-                    LabeledContent("历史保留") {
-                        Text("\(state.retentionDays) 天")
+                    LabeledContent(strings.text("settings.history_retention")) {
+                        Text(strings.format("settings.days", state.retentionDays))
                     }
                 }
 
-                Picker("显示快捷键", selection: $state.shortcutDefinition) {
+                Picker(strings.text("settings.shortcut"), selection: $state.shortcutDefinition) {
                     ForEach(GlobalShortcutDefinition.allCases) { shortcut in
                         Text(shortcut.displayName).tag(shortcut)
                     }
                 }
 
-                Toggle("登录时启动", isOn: Binding(
+                Toggle(strings.text("settings.launch_at_login"), isOn: Binding(
                     get: { loginItemService.isEnabled },
                     set: setLaunchAtLogin
                 ))
 
-                Toggle("显示底部按键提示", isOn: $state.showsShortcutHints)
+                Toggle(strings.text("settings.show_shortcut_hints"), isOn: $state.showsShortcutHints)
             }
 
-            Section("粘贴行为") {
-                Picker("选择项目时", selection: $state.pasteBehavior) {
+            Section(strings.text("settings.paste_behavior")) {
+                Picker(strings.text("settings.when_selecting"), selection: $state.pasteBehavior) {
                     ForEach(PasteBehavior.allCases) { behavior in
-                        Text(behavior.displayName).tag(behavior)
+                        Text(behavior.displayName(using: strings)).tag(behavior)
                     }
                 }
 
                 if state.pasteBehavior == .copyToClipboard {
-                    Label("此模式无需辅助功能授权", systemImage: "checkmark.shield.fill")
+                    Label(strings.text("settings.no_accessibility_required"), systemImage: "checkmark.shield.fill")
                         .foregroundStyle(.green)
-                    Text("Clipboard Ripple 会正常记录、搜索并恢复剪贴内容。选择项目后，请在目标应用按 ⌘V。")
+                    Text(strings.text("settings.copy_mode_description"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     HStack {
                         Label(
-                            accessibilityTrusted ? "自动粘贴权限已启用" : "自动粘贴需要辅助功能权限",
+                            accessibilityTrusted
+                                ? strings.text("settings.accessibility_enabled")
+                                : strings.text("settings.accessibility_required"),
                             systemImage: accessibilityTrusted ? "checkmark.shield.fill" : "exclamationmark.shield"
                         )
                         .foregroundStyle(accessibilityTrusted ? .green : .orange)
                         Spacer()
-                        Button(accessibilityTrusted ? "重新检查" : "打开授权提示") {
+                        Button(
+                            accessibilityTrusted
+                                ? strings.text("settings.recheck")
+                                : strings.text("settings.open_permission_prompt")
+                        ) {
                             directPasteService.requestAccessibilityPermission()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                 accessibilityTrusted = directPasteService.isAccessibilityTrusted
                             }
                         }
                     }
-                    Text("该权限仅用于向前台应用发送一次 ⌘V；不授权不影响其他功能。")
+                    Text(strings.text("settings.accessibility_description"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Section("隐私排除") {
+            Section(strings.text("settings.privacy_exclusions")) {
                 if state.excludedBundleIdentifiers.isEmpty {
-                    Text("尚未排除应用。带有 confidential 或 transient 标记的内容仍会自动忽略。")
+                    Text(strings.text("settings.no_excluded_apps"))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(state.excludedBundleIdentifiers, id: \.self) { identifier in
@@ -87,16 +101,16 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Button("选择要排除的应用…") {
+                Button(strings.text("settings.choose_excluded_app")) {
                     chooseExcludedApplication()
                 }
             }
 
-            Section("本地数据") {
-                Button("清除未固定的历史…", role: .destructive) {
+            Section(strings.text("settings.local_data")) {
+                Button(strings.text("settings.clear_unpinned"), role: .destructive) {
                     showsClearConfirmation = true
                 }
-                Text("Pinboards 中固定的项目不会被删除。Clipboard Ripple 不上传剪贴内容。")
+                Text(strings.text("settings.local_data_description"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -111,17 +125,18 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(4)
         .frame(width: 570, height: 520)
+        .environment(\.locale, state.appLanguage.locale)
         .onAppear {
             loginItemService.refresh()
             accessibilityTrusted = directPasteService.isAccessibilityTrusted
         }
-        .alert("清除剪贴历史？", isPresented: $showsClearConfirmation) {
-            Button("取消", role: .cancel) {}
-            Button("清除", role: .destructive) {
+        .alert(strings.text("settings.clear_title"), isPresented: $showsClearConfirmation) {
+            Button(strings.text("pinboard.cancel"), role: .cancel) {}
+            Button(strings.text("settings.clear"), role: .destructive) {
                 state.clearUnpinnedHistory()
             }
         } message: {
-            Text("这会删除所有未固定的本地历史记录，无法撤销。")
+            Text(strings.text("settings.clear_message"))
         }
     }
 
@@ -131,14 +146,14 @@ struct SettingsView: View {
             operationError = nil
         } catch {
             loginItemService.refresh()
-            operationError = "登录项设置失败：\(error.localizedDescription)"
+            operationError = state.strings.format("error.login_item_failed", error.localizedDescription)
         }
     }
 
     private func chooseExcludedApplication() {
         let panel = NSOpenPanel()
-        panel.title = "选择不保存剪贴内容的应用"
-        panel.prompt = "排除"
+        panel.title = state.strings.text("settings.exclusion_panel_title")
+        panel.prompt = state.strings.text("settings.exclude")
         panel.allowedContentTypes = [.applicationBundle]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -156,6 +171,7 @@ struct SettingsView: View {
 
 @MainActor
 final class SettingsWindowController {
+    private let state: AppState
     private let window: NSWindow
 
     init(
@@ -163,6 +179,7 @@ final class SettingsWindowController {
         loginItemService: LoginItemService,
         directPasteService: DirectPasteService
     ) {
+        self.state = state
         let controller = NSHostingController(
             rootView: SettingsView(
                 state: state,
@@ -171,7 +188,7 @@ final class SettingsWindowController {
             )
         )
         window = NSWindow(contentViewController: controller)
-        window.title = "Clipboard Ripple 设置"
+        window.title = state.strings.text("settings.title")
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.setContentSize(NSSize(width: 570, height: 520))
         window.center()
@@ -181,5 +198,9 @@ final class SettingsWindowController {
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
+    }
+
+    func updateLanguage() {
+        window.title = state.strings.text("settings.title")
     }
 }

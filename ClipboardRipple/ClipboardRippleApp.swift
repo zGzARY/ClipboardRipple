@@ -43,10 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let store = try HistoryStore()
             state = AppState(store: store)
         } catch {
+            let strings = AppStrings(language: AppLanguage.resolved())
             let alert = NSAlert()
             alert.alertStyle = .critical
-            alert.messageText = "Clipboard Ripple 无法启动"
-            alert.informativeText = "无法打开本地数据库：\(error.localizedDescription)"
+            alert.messageText = strings.text("error.startup_title")
+            alert.informativeText = strings.format("error.database_open", error.localizedDescription)
             alert.runModal()
             NSApp.terminate(nil)
             return
@@ -105,8 +106,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         monitor.onCapture = { [weak self] captured, application in
             self?.state.receive(captured, from: application)
         }
-        monitor.onSkippedContent = { [weak self] message in
-            self?.state.notice = message
+        monitor.onSkippedContent = { [weak self] error in
+            self?.state.notice = self?.state.strings.captureError(error)
         }
         shortcutService.onPressed = { [weak self] in
             self?.toggleTimeline()
@@ -130,6 +131,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.monitor.isPaused = paused
             self?.pauseMenuItem?.state = paused ? .on : .off
         }
+        state.onLanguageChanged = { [weak self] _ in
+            self?.rebuildStatusMenu()
+            self?.settingsController.updateLanguage()
+        }
     }
 
     private func configureStatusItem() {
@@ -142,20 +147,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.toolTip = "Clipboard Ripple"
         }
 
+        rebuildStatusMenu()
+    }
+
+    private func rebuildStatusMenu() {
+        let strings = state.strings
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(withTitle: "显示 Clipboard Ripple", action: #selector(showTimeline), keyEquivalent: "")
-        pauseMenuItem = menu.addItem(withTitle: "暂停捕获", action: #selector(togglePause), keyEquivalent: "")
-        launchMenuItem = menu.addItem(withTitle: "登录时启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        menu.addItem(withTitle: strings.text("menu.show"), action: #selector(showTimeline), keyEquivalent: "")
+        pauseMenuItem = menu.addItem(
+            withTitle: state.isPaused
+                ? strings.text("menu.resume_capture")
+                : strings.text("menu.pause_capture"),
+            action: #selector(togglePause),
+            keyEquivalent: ""
+        )
+        launchMenuItem = menu.addItem(
+            withTitle: strings.text("menu.launch_at_login"),
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
         menu.addItem(.separator())
-        menu.addItem(withTitle: "设置…", action: #selector(showSettingsAction), keyEquivalent: ",")
+        menu.addItem(withTitle: strings.text("menu.settings"), action: #selector(showSettingsAction), keyEquivalent: ",")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "退出 Clipboard Ripple", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: strings.text("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         for item in menu.items { item.target = self }
         statusItem.menu = menu
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        pauseMenuItem.title = state.isPaused
+            ? state.strings.text("menu.resume_capture")
+            : state.strings.text("menu.pause_capture")
         pauseMenuItem.state = state.isPaused ? .on : .off
         loginItemService.refresh()
         launchMenuItem.state = loginItemService.isEnabled ? .on : .off
@@ -178,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try loginItemService.setEnabled(!loginItemService.isEnabled)
             state.notice = nil
         } catch {
-            state.notice = "登录项设置失败：\(error.localizedDescription)"
+            state.notice = state.strings.format("error.login_item_failed", error.localizedDescription)
         }
     }
 
@@ -200,7 +223,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try shortcutService.register(definition)
             state.notice = nil
         } catch {
-            state.notice = error.localizedDescription
+            if let registrationError = error as? GlobalShortcutRegistrationError {
+                switch registrationError {
+                case .handlerInstallationFailed:
+                    state.notice = state.strings.text("error.shortcut_handler")
+                case let .alreadyInUse(definition):
+                    state.notice = state.strings.format("error.shortcut_in_use", definition.displayName)
+                }
+            } else {
+                state.notice = state.strings.text("error.shortcut_handler")
+            }
         }
     }
 
@@ -210,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         behavior: PasteBehavior? = nil
     ) {
         guard let payload = record.payload else {
-            state.notice = "该记录已损坏，无法恢复"
+            state.notice = state.strings.text("error.corrupt_record")
             return
         }
         let target = panelController.targetApplication
@@ -226,11 +258,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .pasted:
                 self?.state.notice = nil
             case .copied:
-                self?.state.notice = "已复制到剪贴板；请在目标应用按 ⌘V"
+                self?.state.notice = self?.state.strings.text("error.copied_manual_paste")
             case .accessibilityPermissionRequired:
-                self?.state.notice = "已复制到剪贴板；自动粘贴需在设置中授权辅助功能"
-            case let .failed(message):
-                self?.state.notice = message
+                self?.state.notice = self?.state.strings.text("error.copied_accessibility_required")
+            case let .failed(failure):
+                switch failure {
+                case .cannotRestoreContent:
+                    self?.state.notice = self?.state.strings.text("error.restore_clipboard")
+                case .cannotGeneratePasteEvent:
+                    self?.state.notice = self?.state.strings.text("error.paste_event")
+                }
             }
         }
     }

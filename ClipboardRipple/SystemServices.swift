@@ -37,19 +37,24 @@ enum PasteBehavior: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var displayName: String {
+    func displayName(using strings: AppStrings) -> String {
         switch self {
-        case .copyToClipboard: "复制到剪贴板（无需权限）"
-        case .automaticPaste: "自动粘贴到前台应用"
+        case .copyToClipboard: strings.text("paste.copy_mode")
+        case .automaticPaste: strings.text("paste.automatic_mode")
         }
     }
 
-    var actionName: String {
+    func actionName(using strings: AppStrings) -> String {
         switch self {
-        case .copyToClipboard: "复制"
-        case .automaticPaste: "粘贴"
+        case .copyToClipboard: strings.text("action.copy")
+        case .automaticPaste: strings.text("action.paste")
         }
     }
+}
+
+enum GlobalShortcutRegistrationError: Error, Equatable {
+    case handlerInstallationFailed
+    case alreadyInUse(GlobalShortcutDefinition)
 }
 
 private let clipboardRippleHotKeySignature: OSType = 0x4352504C // CRPL
@@ -106,11 +111,7 @@ final class GlobalShortcutService {
             &handlerReference
         )
         guard handlerStatus == noErr else {
-            throw NSError(
-                domain: NSOSStatusErrorDomain,
-                code: Int(handlerStatus),
-                userInfo: [NSLocalizedDescriptionKey: "无法安装全局快捷键处理器"]
-            )
+            throw GlobalShortcutRegistrationError.handlerInstallationFailed
         }
 
         let identifier = EventHotKeyID(signature: clipboardRippleHotKeySignature, id: 1)
@@ -124,11 +125,7 @@ final class GlobalShortcutService {
         )
         guard registerStatus == noErr else {
             unregister()
-            throw NSError(
-                domain: NSOSStatusErrorDomain,
-                code: Int(registerStatus),
-                userInfo: [NSLocalizedDescriptionKey: "快捷键 \(definition.displayName) 已被其他应用占用"]
-            )
+            throw GlobalShortcutRegistrationError.alreadyInUse(definition)
         }
     }
 
@@ -153,11 +150,16 @@ final class GlobalShortcutService {
     }
 }
 
+enum DirectPasteFailure: Equatable {
+    case cannotRestoreContent
+    case cannotGeneratePasteEvent
+}
+
 enum DirectPasteResult: Equatable {
     case pasted
     case copied
     case accessibilityPermissionRequired
-    case failed(String)
+    case failed(DirectPasteFailure)
 }
 
 @MainActor
@@ -186,7 +188,7 @@ final class DirectPasteService {
         completion: @escaping (DirectPasteResult) -> Void
     ) {
         guard write(payload: payload, asPlainText: asPlainText) else {
-            completion(.failed("无法恢复剪贴内容"))
+            completion(.failed(.cannotRestoreContent))
             return
         }
         monitor.markOwnWrite()
@@ -214,7 +216,7 @@ final class DirectPasteService {
                   let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
                   let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
             else {
-                completion(.failed("无法生成粘贴按键事件"))
+                completion(.failed(.cannotGeneratePasteEvent))
                 return
             }
             keyDown.flags = .maskCommand
