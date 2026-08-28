@@ -60,6 +60,22 @@ struct ClipboardRippleTransform: Equatable {
     )
 }
 
+struct ClipboardRippleEdgeTransform: Equatable {
+    let scale: CGFloat
+    let retreat: CGFloat
+    let horizontalOffset: CGFloat
+    let opacity: CGFloat
+    let depth: CGFloat
+
+    static let identity = ClipboardRippleEdgeTransform(
+        scale: 1,
+        retreat: 0,
+        horizontalOffset: 0,
+        opacity: 1,
+        depth: 1
+    )
+}
+
 enum ClipboardRippleMotion {
     static let cardWidth: CGFloat = 228
     static let cardHeight: CGFloat = 232
@@ -79,6 +95,10 @@ enum ClipboardRippleMotion {
     private static let maximumScale: CGFloat = 1.15
     private static let maximumLift: CGFloat = 12
     private static let maximumPush: CGFloat = 28
+    private static let edgeTransitionWidth: CGFloat = 140
+    private static let minimumEdgeScale: CGFloat = 0.86
+    private static let maximumEdgeRetreat: CGFloat = 14
+    private static let maximumEdgePush: CGFloat = 12
 
     static func centerX(for index: Int) -> CGFloat {
         horizontalInset + cardWidth / 2 + CGFloat(index) * (cardWidth + cardSpacing)
@@ -106,13 +126,46 @@ enum ClipboardRippleMotion {
         )
     }
 
+    static func edgeTransform(
+        for index: Int,
+        contentOffsetX: CGFloat,
+        viewportWidth: CGFloat,
+        reduceMotion: Bool
+    ) -> ClipboardRippleEdgeTransform {
+        guard viewportWidth > 0 else { return .identity }
+        let viewportCenter = centerX(for: index) - contentOffsetX
+        let distanceToNearestEdge = min(viewportCenter, viewportWidth - viewportCenter)
+        let rawVisibility = min(max(distanceToNearestEdge / edgeTransitionWidth, 0), 1)
+        let visibility = rawVisibility * rawVisibility * (3 - 2 * rawVisibility)
+        let edgeDirection: CGFloat = viewportCenter < viewportWidth / 2 ? -1 : 1
+
+        guard !reduceMotion else {
+            return ClipboardRippleEdgeTransform(
+                scale: 1,
+                retreat: 0,
+                horizontalOffset: 0,
+                opacity: visibility,
+                depth: visibility
+            )
+        }
+
+        let retreatProgress = 1 - visibility
+        return ClipboardRippleEdgeTransform(
+            scale: minimumEdgeScale + (1 - minimumEdgeScale) * visibility,
+            retreat: maximumEdgeRetreat * retreatProgress,
+            horizontalOffset: edgeDirection * maximumEdgePush * retreatProgress,
+            opacity: visibility,
+            depth: visibility
+        )
+    }
 }
 
 private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
     @Binding var contentOffsetX: CGFloat
+    @Binding var viewportWidth: CGFloat
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(contentOffsetX: $contentOffsetX)
+        Coordinator(contentOffsetX: $contentOffsetX, viewportWidth: $viewportWidth)
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -123,6 +176,7 @@ private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.contentOffsetX = $contentOffsetX
+        context.coordinator.viewportWidth = $viewportWidth
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -132,11 +186,13 @@ private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
     @MainActor
     final class Coordinator {
         var contentOffsetX: Binding<CGFloat>
+        var viewportWidth: Binding<CGFloat>
         private weak var clipView: NSClipView?
         private var observer: NSObjectProtocol?
 
-        init(contentOffsetX: Binding<CGFloat>) {
+        init(contentOffsetX: Binding<CGFloat>, viewportWidth: Binding<CGFloat>) {
             self.contentOffsetX = contentOffsetX
+            self.viewportWidth = viewportWidth
         }
 
         func attach(from view: NSView) {
@@ -167,8 +223,13 @@ private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
         private func publishOffset() {
             guard let clipView else { return }
             let nextOffset = max(0, clipView.bounds.minX)
-            guard nextOffset != contentOffsetX.wrappedValue else { return }
-            contentOffsetX.wrappedValue = nextOffset
+            if nextOffset != contentOffsetX.wrappedValue {
+                contentOffsetX.wrappedValue = nextOffset
+            }
+            let nextWidth = max(0, clipView.bounds.width)
+            if nextWidth != viewportWidth.wrappedValue {
+                viewportWidth.wrappedValue = nextWidth
+            }
         }
     }
 }
@@ -244,6 +305,7 @@ struct TimelineView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @FocusState private var searchIsFocused: Bool
     @State private var dockContentOffsetX: CGFloat = 0
+    @State private var dockViewportWidth: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -380,14 +442,25 @@ struct TimelineView: View {
                                 for: index,
                                 pointerX: reduceMotion ? nil : dockContentPointerX
                             )
+                            let edgeTransform = ClipboardRippleMotion.edgeTransform(
+                                for: index,
+                                contentOffsetX: dockContentOffsetX,
+                                viewportWidth: dockViewportWidth,
+                                reduceMotion: reduceMotion
+                            )
                             ClipboardCard(
                                 record: record,
                                 selected: index == state.selectedIndex,
                                 strings: state.strings
                             )
-                                .scaleEffect(transform.scale, anchor: .bottom)
-                                .offset(x: transform.horizontalOffset, y: -transform.lift)
-                                .zIndex(transform.influence)
+                                .scaleEffect(transform.scale * edgeTransform.scale, anchor: .bottom)
+                                .offset(
+                                    x: transform.horizontalOffset + edgeTransform.horizontalOffset,
+                                    y: -transform.lift + edgeTransform.retreat
+                                )
+                                .opacity(edgeTransform.opacity)
+                                .zIndex(transform.influence + edgeTransform.depth)
+                                .allowsHitTesting(edgeTransform.opacity > 0.12)
                                 .id(record.id)
                                 .onTapGesture {
                                     state.select(index: index)
@@ -442,15 +515,37 @@ struct TimelineView: View {
                 .padding(.top, ClipboardRippleMotion.cardTopInset)
                 .padding(.bottom, ClipboardRippleMotion.cardBottomInset)
                 .background {
-                    ClipboardRippleScrollOffsetReader(contentOffsetX: $dockContentOffsetX)
+                    ClipboardRippleScrollOffsetReader(
+                        contentOffsetX: $dockContentOffsetX,
+                        viewportWidth: $dockViewportWidth
+                    )
                 }
             }
+            .scrollClipDisabled()
             .onChange(of: state.selectionRevealGeneration) { _, _ in
                 guard records.indices.contains(state.selectedIndex) else { return }
                 proxy.scrollTo(records[state.selectedIndex].id, anchor: .center)
             }
         }
         .frame(height: ClipboardRippleMotion.cardTimelineHeight)
+        .mask(cardEdgeFadeMask)
+    }
+
+    private var cardEdgeFadeMask: some View {
+        GeometryReader { geometry in
+            let width = max(geometry.size.width, 1)
+            let fadeStop = min(0.18, 96 / width)
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: fadeStop),
+                    .init(color: .black, location: 1 - fadeStop),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
     }
 
     private var dockContentPointerX: CGFloat? {
@@ -681,7 +776,13 @@ private struct ClipboardCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(selected ? Color.accentColor : .black.opacity(0.06), lineWidth: selected ? 3 : 1)
         }
-        .shadow(color: .black.opacity(0.14), radius: 8, y: 5)
+        .background(alignment: .bottom) {
+            Capsule()
+                .fill(.black.opacity(0.16))
+                .frame(width: ClipboardRippleMotion.cardWidth * 0.78, height: 10)
+                .blur(radius: 7)
+                .offset(y: 7)
+        }
     }
 }
 

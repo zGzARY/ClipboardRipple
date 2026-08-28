@@ -364,6 +364,80 @@ final class ClipboardRippleTests: XCTestCase {
         XCTAssertEqual(ClipboardRippleMotion.transform(for: 3, pointerX: pointerX), .identity)
     }
 
+    func testEdgeRetreatIsIdentityInTheViewportInterior() {
+        let index = 2
+        let viewportWidth: CGFloat = 1_000
+        let offset = ClipboardRippleMotion.centerX(for: index) - viewportWidth / 2
+
+        XCTAssertEqual(
+            ClipboardRippleMotion.edgeTransform(
+                for: index,
+                contentOffsetX: offset,
+                viewportWidth: viewportWidth,
+                reduceMotion: false
+            ),
+            .identity
+        )
+    }
+
+    func testEdgeRetreatIsSymmetricAtLeftAndRightEdges() {
+        let index = 2
+        let viewportWidth: CGFloat = 1_000
+        let center = ClipboardRippleMotion.centerX(for: index)
+        let left = ClipboardRippleMotion.edgeTransform(
+            for: index,
+            contentOffsetX: center - 70,
+            viewportWidth: viewportWidth,
+            reduceMotion: false
+        )
+        let right = ClipboardRippleMotion.edgeTransform(
+            for: index,
+            contentOffsetX: center - (viewportWidth - 70),
+            viewportWidth: viewportWidth,
+            reduceMotion: false
+        )
+
+        XCTAssertEqual(left.scale, right.scale, accuracy: 0.000_1)
+        XCTAssertEqual(left.retreat, right.retreat, accuracy: 0.000_1)
+        XCTAssertEqual(left.opacity, right.opacity, accuracy: 0.000_1)
+        XCTAssertEqual(left.horizontalOffset, -right.horizontalOffset, accuracy: 0.000_1)
+        XCTAssertLessThan(left.horizontalOffset, 0)
+        XCTAssertGreaterThan(right.horizontalOffset, 0)
+    }
+
+    func testEdgeRetreatFadesBeforeViewportClipping() {
+        let index = 2
+        let center = ClipboardRippleMotion.centerX(for: index)
+        let transform = ClipboardRippleMotion.edgeTransform(
+            for: index,
+            contentOffsetX: center,
+            viewportWidth: 1_000,
+            reduceMotion: false
+        )
+
+        XCTAssertEqual(transform.opacity, 0)
+        XCTAssertEqual(transform.scale, 0.86, accuracy: 0.000_1)
+        XCTAssertEqual(transform.retreat, 14, accuracy: 0.000_1)
+        XCTAssertEqual(transform.horizontalOffset, -12, accuracy: 0.000_1)
+    }
+
+    func testReduceMotionKeepsOnlyEdgeFade() {
+        let index = 2
+        let center = ClipboardRippleMotion.centerX(for: index)
+        let transform = ClipboardRippleMotion.edgeTransform(
+            for: index,
+            contentOffsetX: center - 70,
+            viewportWidth: 1_000,
+            reduceMotion: true
+        )
+
+        XCTAssertEqual(transform.scale, 1)
+        XCTAssertEqual(transform.retreat, 0)
+        XCTAssertEqual(transform.horizontalOffset, 0)
+        XCTAssertGreaterThan(transform.opacity, 0)
+        XCTAssertLessThan(transform.opacity, 1)
+    }
+
     func testClipboardRipplePanelPointerTracksScrollOffset() {
         XCTAssertEqual(
             ClipboardRippleMotion.contentPointerX(panelPointerX: 420, contentOffsetX: 180),
