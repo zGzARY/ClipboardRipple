@@ -22,20 +22,26 @@ struct VisualEffectView: NSViewRepresentable {
 }
 
 enum CoarseRelativeTime {
-    static func text(for date: Date, relativeTo now: Date = Date()) -> String {
+    static func text(
+        for date: Date,
+        relativeTo now: Date = Date(),
+        using strings: AppStrings
+    ) -> String {
         let seconds = max(0, now.timeIntervalSince(date))
         switch seconds {
-        case ..<60: return "just now"
-        case ..<180: return "1 min ago"
-        case ..<300: return "3 min ago"
-        case ..<600: return "5 min ago"
-        case ..<1_200: return "10 min ago"
-        case ..<1_800: return "20 min ago"
-        case ..<3_600: return "30 min ago"
-        case ..<86_400: return "\(Int(seconds / 3_600)) h ago"
+        case ..<60: return strings.text("time.just_now")
+        case ..<180: return strings.text("time.one_minute_ago")
+        case ..<300: return strings.text("time.three_minutes_ago")
+        case ..<600: return strings.text("time.five_minutes_ago")
+        case ..<1_200: return strings.text("time.ten_minutes_ago")
+        case ..<1_800: return strings.text("time.twenty_minutes_ago")
+        case ..<3_600: return strings.text("time.thirty_minutes_ago")
+        case ..<86_400: return strings.format("time.hours_ago", Int(seconds / 3_600))
         default:
             let days = Int(seconds / 86_400)
-            return days == 1 ? "1 day ago" : "\(days) days ago"
+            return days == 1
+                ? strings.text("time.one_day_ago")
+                : strings.format("time.days_ago", days)
         }
     }
 }
@@ -51,6 +57,22 @@ struct ClipboardRippleTransform: Equatable {
         lift: 0,
         horizontalOffset: 0,
         influence: 0
+    )
+}
+
+struct ClipboardRippleEdgeTransform: Equatable {
+    let scale: CGFloat
+    let retreat: CGFloat
+    let horizontalOffset: CGFloat
+    let opacity: CGFloat
+    let depth: CGFloat
+
+    static let identity = ClipboardRippleEdgeTransform(
+        scale: 1,
+        retreat: 0,
+        horizontalOffset: 0,
+        opacity: 1,
+        depth: 1
     )
 }
 
@@ -73,18 +95,25 @@ enum ClipboardRippleMotion {
     private static let maximumScale: CGFloat = 1.15
     private static let maximumLift: CGFloat = 12
     private static let maximumPush: CGFloat = 28
+    private static let edgeTransitionWidth: CGFloat = 112
+    private static let minimumEdgeScale: CGFloat = 0.86
+    private static let maximumEdgeRetreat: CGFloat = 14
+    private static let maximumEdgePush: CGFloat = 12
 
     static func centerX(for index: Int) -> CGFloat {
         horizontalInset + cardWidth / 2 + CGFloat(index) * (cardWidth + cardSpacing)
     }
 
-    static func contentPointerX(panelPointerX: CGFloat?, contentOffsetX: CGFloat) -> CGFloat? {
-        panelPointerX.map { $0 - panelInset + contentOffsetX }
+    static func transform(for index: Int, pointerX: CGFloat?) -> ClipboardRippleTransform {
+        transform(cardCenterX: centerX(for: index), pointerX: pointerX)
     }
 
-    static func transform(for index: Int, pointerX: CGFloat?) -> ClipboardRippleTransform {
+    static func transform(
+        cardCenterX: CGFloat,
+        pointerX: CGFloat?
+    ) -> ClipboardRippleTransform {
         guard let pointerX else { return .identity }
-        let delta = centerX(for: index) - pointerX
+        let delta = cardCenterX - pointerX
         let distance = abs(delta)
         guard distance < influenceRadius else { return .identity }
 
@@ -99,71 +128,55 @@ enum ClipboardRippleMotion {
             influence: influence
         )
     }
+
+    static func edgeTransform(
+        for index: Int,
+        contentOffsetX: CGFloat,
+        viewportWidth: CGFloat,
+        reduceMotion: Bool
+    ) -> ClipboardRippleEdgeTransform {
+        let viewportCenter = centerX(for: index) - contentOffsetX
+        return edgeTransform(
+            viewportCenter: viewportCenter,
+            viewportWidth: viewportWidth,
+            reduceMotion: reduceMotion
+        )
+    }
+
+    static func edgeTransform(
+        viewportCenter: CGFloat,
+        viewportWidth: CGFloat,
+        reduceMotion: Bool
+    ) -> ClipboardRippleEdgeTransform {
+        guard viewportWidth > 0 else { return .identity }
+        let distanceToNearestEdge = min(viewportCenter, viewportWidth - viewportCenter)
+        let rawVisibility = min(max(distanceToNearestEdge / edgeTransitionWidth, 0), 1)
+        let visibility = rawVisibility * rawVisibility * (3 - 2 * rawVisibility)
+        let edgeDirection: CGFloat = viewportCenter < viewportWidth / 2 ? -1 : 1
+
+        guard !reduceMotion else {
+            return ClipboardRippleEdgeTransform(
+                scale: 1,
+                retreat: 0,
+                horizontalOffset: 0,
+                opacity: visibility,
+                depth: visibility
+            )
+        }
+
+        let retreatProgress = 1 - visibility
+        return ClipboardRippleEdgeTransform(
+            scale: minimumEdgeScale + (1 - minimumEdgeScale) * visibility,
+            retreat: maximumEdgeRetreat * retreatProgress,
+            horizontalOffset: edgeDirection * maximumEdgePush * retreatProgress,
+            opacity: visibility,
+            depth: visibility
+        )
+    }
 }
 
-private struct ClipboardRippleScrollOffsetReader: NSViewRepresentable {
-    @Binding var contentOffsetX: CGFloat
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(contentOffsetX: $contentOffsetX)
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { context.coordinator.attach(from: view) }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.contentOffsetX = $contentOffsetX
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    @MainActor
-    final class Coordinator {
-        var contentOffsetX: Binding<CGFloat>
-        private weak var clipView: NSClipView?
-        private var observer: NSObjectProtocol?
-
-        init(contentOffsetX: Binding<CGFloat>) {
-            self.contentOffsetX = contentOffsetX
-        }
-
-        func attach(from view: NSView) {
-            guard let nextClipView = view.enclosingScrollView?.contentView else { return }
-            guard nextClipView !== clipView else {
-                publishOffset()
-                return
-            }
-            detach()
-            clipView = nextClipView
-            nextClipView.postsBoundsChangedNotifications = true
-            observer = NotificationCenter.default.addObserver(
-                forName: NSView.boundsDidChangeNotification,
-                object: nextClipView,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.publishOffset() }
-            }
-            publishOffset()
-        }
-
-        func detach() {
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-            observer = nil
-            clipView = nil
-        }
-
-        private func publishOffset() {
-            guard let clipView else { return }
-            let nextOffset = max(0, clipView.bounds.minX)
-            guard nextOffset != contentOffsetX.wrappedValue else { return }
-            contentOffsetX.wrappedValue = nextOffset
-        }
-    }
+private enum ClipboardRippleCoordinateSpace {
+    static let cardTimeline = "ClipboardRipple.cardTimeline"
 }
 
 @MainActor
@@ -236,7 +249,6 @@ struct TimelineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @FocusState private var searchIsFocused: Bool
-    @State private var dockContentOffsetX: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -257,12 +269,13 @@ struct TimelineView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { state.isCreatingPinboard = false }
-                NewPinboardView { name, color in
+                NewPinboardView(strings: state.strings) { name, color in
                     state.createPinboard(name: name, colorHex: color)
                     state.isCreatingPinboard = false
                 } onCancel: {
                     state.isCreatingPinboard = false
                 }
+                .environment(\.locale, state.appLanguage.locale)
                 .background(
                     Color(nsColor: .windowBackgroundColor),
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -273,6 +286,7 @@ struct TimelineView: View {
         .onChange(of: state.searchFocusGeneration) { _, _ in
             searchIsFocused = true
         }
+        .environment(\.locale, state.appLanguage.locale)
     }
 
     private var dockSurface: some View {
@@ -293,11 +307,12 @@ struct TimelineView: View {
     }
 
     private var dockControls: some View {
-        HStack(spacing: 10) {
+        let strings = state.strings
+        return HStack(spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("搜索内容、来源应用或类型", text: $state.searchText)
+                TextField(strings.text("timeline.search_placeholder"), text: $state.searchText)
                     .textFieldStyle(.plain)
                     .focused($searchIsFocused)
             }
@@ -308,7 +323,7 @@ struct TimelineView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     BoardChip(
-                        title: "剪贴板",
+                        title: strings.text("timeline.clipboard"),
                         color: .secondary,
                         symbol: "clock.arrow.circlepath",
                         selected: state.selectedPinboardID == nil
@@ -318,7 +333,7 @@ struct TimelineView: View {
 
                     ForEach(state.pinboards) { board in
                         BoardChip(
-                            title: board.name,
+                            title: state.pinboardDisplayName(board),
                             color: Color(hex: board.colorHex),
                             symbol: "pin.fill",
                             selected: state.selectedPinboardID == board.id
@@ -326,7 +341,10 @@ struct TimelineView: View {
                             state.selectedPinboardID = board.id
                         }
                         .contextMenu {
-                            Button("删除 \(board.name)", role: .destructive) {
+                            Button(
+                                strings.format("action.delete_named", state.pinboardDisplayName(board)),
+                                role: .destructive
+                            ) {
                                 state.deletePinboard(board)
                             }
                         }
@@ -356,92 +374,162 @@ struct TimelineView: View {
 
     private var cardTimeline: some View {
         let records = state.filteredRecords
-        return ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: ClipboardRippleMotion.cardSpacing) {
-                    if records.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
-                            let transform = ClipboardRippleMotion.transform(
-                                for: index,
-                                pointerX: reduceMotion ? nil : dockContentPointerX
-                            )
-                            ClipboardCard(record: record, selected: index == state.selectedIndex)
-                                .scaleEffect(transform.scale, anchor: .bottom)
-                                .offset(x: transform.horizontalOffset, y: -transform.lift)
-                                .zIndex(transform.influence)
-                                .id(record.id)
-                                .onTapGesture {
-                                    state.select(index: index)
-                                }
-                                .simultaneousGesture(
-                                    TapGesture(count: 2).onEnded {
-                                        state.automaticallyPaste(
-                                            index: index,
-                                            asPlainText: NSEvent.modifierFlags.contains(.shift)
-                                        )
-                                    }
+        return GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: ClipboardRippleMotion.cardSpacing) {
+                        if records.isEmpty {
+                            emptyState
+                        } else {
+                            ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                                timelineCard(
+                                    record: record,
+                                    index: index,
+                                    viewportWidth: viewport.size.width
                                 )
-                                .contextMenu {
-                                    Button(state.pasteBehavior.actionName) {
-                                        state.select(index: index)
-                                        state.pasteSelected()
-                                    }
-                                    Button("\(state.pasteBehavior.actionName)为纯文本") {
-                                        state.select(index: index)
-                                        state.pasteSelected(asPlainText: true)
-                                    }
-                                    if !state.pinboards.isEmpty {
-                                        Menu("固定到 Pinboard") {
-                                            ForEach(state.pinboards) { board in
-                                                Button {
-                                                    state.togglePin(record, pinboardID: board.id)
-                                                } label: {
-                                                    let pinned = record.pinboardIDs.contains(board.id)
-                                                    Label(board.name, systemImage: pinned ? "checkmark" : "pin")
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Divider()
-                                    Button("删除", role: .destructive) {
-                                        state.select(index: index)
-                                        state.deleteSelected()
-                                    }
-                                }
+                            }
                         }
                     }
+                    .padding(.horizontal, ClipboardRippleMotion.horizontalInset)
+                    .padding(.top, ClipboardRippleMotion.cardTopInset)
+                    .padding(.bottom, ClipboardRippleMotion.cardBottomInset)
                 }
-                .padding(.horizontal, ClipboardRippleMotion.horizontalInset)
-                .padding(.top, ClipboardRippleMotion.cardTopInset)
-                .padding(.bottom, ClipboardRippleMotion.cardBottomInset)
-                .background {
-                    ClipboardRippleScrollOffsetReader(contentOffsetX: $dockContentOffsetX)
+                .scrollClipDisabled()
+                .onChange(of: state.selectionRevealGeneration) { _, _ in
+                    guard records.indices.contains(state.selectedIndex) else { return }
+                    proxy.scrollTo(records[state.selectedIndex].id, anchor: .center)
                 }
-            }
-            .onChange(of: state.selectionRevealGeneration) { _, _ in
-                guard records.indices.contains(state.selectedIndex) else { return }
-                proxy.scrollTo(records[state.selectedIndex].id, anchor: .center)
             }
         }
+        .coordinateSpace(name: ClipboardRippleCoordinateSpace.cardTimeline)
         .frame(height: ClipboardRippleMotion.cardTimelineHeight)
+        .compositingGroup()
+        .mask(cardEdgeFeatherMask)
     }
 
-    private var dockContentPointerX: CGFloat? {
-        return ClipboardRippleMotion.contentPointerX(
-            panelPointerX: pointerState.panelX,
-            contentOffsetX: dockContentOffsetX
+    private func timelineCard(
+        record: ClipboardRecord,
+        index: Int,
+        viewportWidth: CGFloat
+    ) -> some View {
+        GeometryReader { card in
+            let viewportCenter = card.frame(
+                in: .named(ClipboardRippleCoordinateSpace.cardTimeline)
+            ).midX
+            let transform = ClipboardRippleMotion.transform(
+                cardCenterX: viewportCenter,
+                pointerX: reduceMotion ? nil : dockViewportPointerX
+            )
+            let edgeTransform = ClipboardRippleMotion.edgeTransform(
+                viewportCenter: viewportCenter,
+                viewportWidth: viewportWidth,
+                reduceMotion: reduceMotion
+            )
+
+            ClipboardCard(
+                record: record,
+                selected: index == state.selectedIndex,
+                strings: state.strings
+            )
+                .scaleEffect(transform.scale * edgeTransform.scale, anchor: .bottom)
+                .offset(
+                    x: transform.horizontalOffset + edgeTransform.horizontalOffset,
+                    y: -transform.lift + edgeTransform.retreat
+                )
+                .opacity(edgeTransform.opacity)
+                .zIndex(transform.influence + edgeTransform.depth)
+                .allowsHitTesting(edgeTransform.opacity > 0.12)
+                .onTapGesture {
+                    state.select(index: index)
+                }
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        state.automaticallyPaste(
+                            index: index,
+                            asPlainText: NSEvent.modifierFlags.contains(.shift)
+                        )
+                    }
+                )
+                .contextMenu {
+                    Button(state.pasteBehavior.actionName(using: state.strings)) {
+                        state.select(index: index)
+                        state.pasteSelected()
+                    }
+                    Button(
+                        state.strings.format(
+                            "action.as_plain_text",
+                            state.pasteBehavior.actionName(using: state.strings)
+                        )
+                    ) {
+                        state.select(index: index)
+                        state.pasteSelected(asPlainText: true)
+                    }
+                    if !state.pinboards.isEmpty {
+                        Menu(state.strings.text("action.pin_to_pinboard")) {
+                            ForEach(state.pinboards) { board in
+                                Button {
+                                    state.togglePin(record, pinboardID: board.id)
+                                } label: {
+                                    let pinned = record.pinboardIDs.contains(board.id)
+                                    Label(
+                                        state.pinboardDisplayName(board),
+                                        systemImage: pinned ? "checkmark" : "pin"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Divider()
+                    Button(state.strings.text("action.delete"), role: .destructive) {
+                        state.select(index: index)
+                        state.deleteSelected()
+                    }
+                }
+        }
+        .frame(
+            width: ClipboardRippleMotion.cardWidth,
+            height: ClipboardRippleMotion.cardHeight
         )
+        .id(record.id)
+    }
+
+    private var cardEdgeFeatherMask: some View {
+        GeometryReader { geometry in
+            let width = max(geometry.size.width, 1)
+            let featherStop = min(0.08, 24 / width)
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: featherStop),
+                    .init(color: .black, location: 1 - featherStop),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+    }
+
+    private var dockViewportPointerX: CGFloat? {
+        pointerState.panelX.map { $0 - ClipboardRippleMotion.panelInset }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 9) {
+        let strings = state.strings
+        return VStack(spacing: 9) {
             Image(systemName: state.searchText.isEmpty ? "square.on.square.dashed" : "magnifyingglass")
                 .font(.system(size: 30, weight: .light))
-            Text(state.searchText.isEmpty ? "复制一些内容，卡片会出现在这里" : "没有匹配的剪贴内容")
+            Text(
+                state.searchText.isEmpty
+                    ? strings.text("timeline.empty_title")
+                    : strings.text("timeline.no_results_title")
+            )
                 .font(.headline)
-            Text(state.searchText.isEmpty ? "默认保留 1 天，可在设置中调整" : "尝试更短的关键词或切回剪贴板")
+            Text(
+                state.searchText.isEmpty
+                    ? strings.text("timeline.empty_subtitle")
+                    : strings.text("timeline.no_results_subtitle")
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -455,10 +543,10 @@ struct TimelineView: View {
                 Label(notice, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             } else if state.isPaused {
-                Label("捕获已暂停", systemImage: "pause.circle.fill")
+                Label(state.strings.text("timeline.capture_paused"), systemImage: "pause.circle.fill")
                     .foregroundStyle(.orange)
             } else {
-                Label("正在本地保存剪贴内容", systemImage: "lock.fill")
+                Label(state.strings.text("timeline.saving_locally"), systemImage: "lock.fill")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -475,8 +563,8 @@ struct TimelineView: View {
     }
 
     private var footerShortcutText: String {
-        let action = state.pasteBehavior.actionName
-        return "← → 选择   双击 插入   ⇧双击 纯文本   ↩ \(action)   ⇧↩ 纯文本   ⌘1…9 快速\(action)"
+        let action = state.pasteBehavior.actionName(using: state.strings)
+        return state.strings.format("timeline.shortcut_hint", action, action)
     }
 }
 
@@ -505,6 +593,7 @@ private struct BoardChip: View {
 private struct ClipboardCard: View {
     let record: ClipboardRecord
     let selected: Bool
+    let strings: AppStrings
 
     private var accent: Color {
         switch record.kind {
@@ -537,15 +626,15 @@ private struct ClipboardCard: View {
     private var detailLabel: String {
         switch record.kind {
         case .text, .richText, .link:
-            "\(record.searchableText.count) 字符"
+            strings.format("timeline.characters", record.searchableText.count)
         case .image:
             record.searchableText
         case .file:
-            "文件"
+            strings.text("content.file")
         case .color:
-            "颜色"
+            strings.text("content.color")
         case .unknown:
-            record.kind.displayName
+            record.kind.displayName(using: strings)
         }
     }
 
@@ -553,9 +642,9 @@ private struct ClipboardCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(record.kind.displayName)
+                    Text(record.kind.displayName(using: strings))
                         .font(.system(size: 15, weight: .bold))
-                    Text(CoarseRelativeTime.text(for: record.capturedAt))
+                    Text(CoarseRelativeTime.text(for: record.capturedAt, using: strings))
                         .font(.caption2)
                         .opacity(0.82)
                 }
@@ -577,8 +666,8 @@ private struct ClipboardCard: View {
                 .padding(4)
                 .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-                .help(record.sourceApplicationName ?? "未知来源")
-                .accessibilityLabel(record.sourceApplicationName ?? "未知来源")
+                .help(record.sourceApplicationName ?? strings.text("timeline.unknown_source"))
+                .accessibilityLabel(record.sourceApplicationName ?? strings.text("timeline.unknown_source"))
             }
             .padding(.horizontal, 12)
             .frame(width: ClipboardRippleMotion.cardWidth, height: 56)
@@ -604,7 +693,7 @@ private struct ClipboardCard: View {
                         )
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(record.title)
+                        Text(record.displayTitle(using: strings))
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.black.opacity(0.84))
                             .lineLimit(2)
@@ -624,7 +713,7 @@ private struct ClipboardCard: View {
             .clipped()
 
             HStack(spacing: 6) {
-                Text(record.sourceApplicationName ?? "未知来源")
+                Text(record.sourceApplicationName ?? strings.text("timeline.unknown_source"))
                     .lineLimit(1)
                 Spacer()
                 if record.isPinned {
@@ -646,11 +735,18 @@ private struct ClipboardCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(selected ? Color.accentColor : .black.opacity(0.06), lineWidth: selected ? 3 : 1)
         }
-        .shadow(color: .black.opacity(0.14), radius: 8, y: 5)
+        .background(alignment: .bottom) {
+            Capsule()
+                .fill(.black.opacity(0.16))
+                .frame(width: ClipboardRippleMotion.cardWidth * 0.78, height: 10)
+                .blur(radius: 7)
+                .offset(y: 7)
+        }
     }
 }
 
 private struct NewPinboardView: View {
+    let strings: AppStrings
     let onCreate: (String, String) -> Void
     let onCancel: () -> Void
     @State private var name = ""
@@ -661,9 +757,9 @@ private struct NewPinboardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("新建 Pinboard")
+            Text(strings.text("pinboard.new"))
                 .font(.title2.weight(.semibold))
-            TextField("名称", text: $name)
+            TextField(strings.text("pinboard.name"), text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($nameIsFocused)
             HStack {
@@ -683,9 +779,9 @@ private struct NewPinboardView: View {
             }
             HStack {
                 Spacer()
-                Button("取消", action: onCancel)
+                Button(strings.text("pinboard.cancel"), action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("创建") {
+                Button(strings.text("pinboard.create")) {
                     onCreate(name, selectedColor)
                 }
                 .keyboardShortcut(.defaultAction)

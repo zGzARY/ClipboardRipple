@@ -2,9 +2,13 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A native, local-first clipboard manager for macOS with Dock-style magnification.
+A tiny, completely free, local-first clipboard manager for macOS with Dock-style magnification.
 
-![Clipboard Ripple timeline with Dock-style card magnification](docs/screenshots/clipboard-ripple-timeline.png)
+[![Clipboard Ripple on macOS](docs/marketing/reddit/01-hero.png)](docs/marketing/reddit/clipboard-ripple-motion-preview.mov)
+
+<p align="center">
+  <a href="docs/marketing/reddit/clipboard-ripple-motion-preview.mov">▶ Watch the 14-second, 60 fps motion preview</a>
+</p>
 
 ## Highlights
 
@@ -12,14 +16,24 @@ A native, local-first clipboard manager for macOS with Dock-style magnification.
 - **Fast recall:** search by content, source app, or type.
 - **Simple actions:** click to select, double-click to paste, or use the keyboard.
 - **Pinboards:** keep important clips close.
+- **Completely free and tiny:** no subscription, ads, analytics, or tracking; the download is about 3.4 MB.
+- **Bilingual:** the full interface supports English and Simplified Chinese.
 - **Native and lightweight:** built with SwiftUI, AppKit, SwiftData, and system frameworks only.
 
-## More views
+## Simple by design
 
 <p>
-  <img src="docs/screenshots/clipboard-ripple-search.png" alt="Clipboard Ripple clipboard history search" width="62%">
-  <img src="docs/screenshots/clipboard-ripple-settings.png" alt="Clipboard Ripple privacy settings" width="30%">
+  <img src="docs/marketing/reddit/02-free-and-tiny.png" alt="Clipboard Ripple is completely free and about 3.4 MB" width="49%">
+  <img src="docs/marketing/reddit/03-simple-by-design.png" alt="Clipboard Ripple is simple, fast, native, and bilingual" width="49%">
 </p>
+
+<p align="center">
+  <img src="docs/marketing/reddit/04-why-github.png" alt="Why Clipboard Ripple is distributed on GitHub instead of the App Store" width="72%">
+</p>
+
+## Download
+
+[Download Clipboard Ripple v0.2.0](https://github.com/zGzARY/ClipboardRipple/releases/tag/v0.2.0). The current GitHub build is not notarized; if macOS blocks the first launch, right-click the app and choose **Open**.
 
 ## Use
 

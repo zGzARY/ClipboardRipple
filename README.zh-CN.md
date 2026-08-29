@@ -2,9 +2,13 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-一款原生、本地优先的 macOS 剪贴板历史工具，带有类似 macOS Dock 的顺滑放大动效。
+一款小巧、完全免费、本地优先的 macOS 剪贴板历史工具，带有类似 macOS Dock 的顺滑放大动效。
 
-![Clipboard Ripple 的 Dock 式卡片放大时间线](docs/screenshots/clipboard-ripple-timeline.png)
+[![Clipboard Ripple 的 macOS 界面](docs/marketing/reddit/01-hero.png)](docs/marketing/reddit/clipboard-ripple-motion-preview.mov)
+
+<p align="center">
+  <a href="docs/marketing/reddit/clipboard-ripple-motion-preview.mov">▶ 观看 14 秒、60 fps 动效预览</a>
+</p>
 
 ## 亮点
 
@@ -12,14 +16,24 @@
 - **快速找回：** 按内容、来源应用或类型搜索。
 - **操作简单：** 单击选择，双击粘贴，也可以全程使用键盘。
 - **Pinboards：** 固定常用内容，随时取用。
+- **完全免费且小巧：** 无订阅、广告、分析统计或追踪；下载约 3.4 MB。
+- **中英双语：** 完整界面支持 English 与简体中文。
 - **原生轻量：** 只使用 SwiftUI、AppKit、SwiftData 与系统框架。
 
-## 更多界面
+## 极简设计
 
 <p>
-  <img src="docs/screenshots/clipboard-ripple-search.png" alt="Clipboard Ripple 剪贴板历史搜索" width="62%">
-  <img src="docs/screenshots/clipboard-ripple-settings.png" alt="Clipboard Ripple 隐私设置" width="30%">
+  <img src="docs/marketing/reddit/02-free-and-tiny.png" alt="Clipboard Ripple 完全免费，下载约 3.4 MB" width="49%">
+  <img src="docs/marketing/reddit/03-simple-by-design.png" alt="Clipboard Ripple 极简、快速、原生并支持中英双语" width="49%">
 </p>
+
+<p align="center">
+  <img src="docs/marketing/reddit/04-why-github.png" alt="为什么 Clipboard Ripple 通过 GitHub 而不是 App Store 分发" width="72%">
+</p>
+
+## 下载
+
+[下载 Clipboard Ripple v0.2.0](https://github.com/zGzARY/ClipboardRipple/releases/tag/v0.2.0)。当前 GitHub 版本未经公证；如果 macOS 首次启动时阻止打开，请右键点击应用并选择 **打开**。
 
 ## 使用
 

@@ -11,15 +11,27 @@ enum ClipboardContentKind: String, Codable {
     case color
     case unknown
 
-    var displayName: String {
+    var storageName: String {
         switch self {
-        case .text: "文本"
-        case .richText: "富文本"
-        case .link: "链接"
-        case .image: "图片"
-        case .file: "文件"
-        case .color: "颜色"
-        case .unknown: "内容"
+        case .text: "Text"
+        case .richText: "Rich Text"
+        case .link: "Link"
+        case .image: "Image"
+        case .file: "File"
+        case .color: "Color"
+        case .unknown: "Content"
+        }
+    }
+
+    func displayName(using strings: AppStrings) -> String {
+        switch self {
+        case .text: strings.text("content.text")
+        case .richText: strings.text("content.rich_text")
+        case .link: strings.text("content.link")
+        case .image: strings.text("content.image")
+        case .file: strings.text("content.file")
+        case .color: strings.text("content.color")
+        case .unknown: strings.text("content.unknown")
         }
     }
 
@@ -143,6 +155,31 @@ final class PinboardRecord {
         self.name = name
         self.colorHex = colorHex
         self.createdAt = createdAt
+    }
+}
+
+extension ClipboardRecord {
+    func displayTitle(using strings: AppStrings) -> String {
+        switch kind {
+        case .image:
+            return strings.format("content.image_title", searchableText)
+        case .color:
+            return strings.text("content.color")
+        case .unknown:
+            return strings.text("content.clipboard_content")
+        case .file:
+            if title == "File" || title == "文件" {
+                return strings.text("content.file")
+            }
+            let lowercasedTitle = title.lowercased()
+            if (title.hasSuffix("个文件") || lowercasedTitle.hasSuffix(" files")),
+               let count = Int(title.split(separator: " ").first ?? "") {
+                return strings.format("content.file_count", count)
+            }
+            return title
+        case .text, .richText, .link:
+            return title.isEmpty ? kind.displayName(using: strings) : title
+        }
     }
 }
 

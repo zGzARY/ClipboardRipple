@@ -10,12 +10,20 @@ final class AppState: ObservableObject {
         static let shortcutDefinition = "shortcutDefinition"
         static let pasteBehavior = "pasteBehavior"
         static let showsShortcutHints = "showsShortcutHints"
+        static let builtInPinboardID = "builtInPinboardID"
         static let clipboardClassificationVersion = "clipboardClassificationVersion"
         static let currentClipboardClassificationVersion = 1
     }
 
     @Published private(set) var records: [ClipboardRecord] = []
     @Published private(set) var pinboards: [PinboardRecord] = []
+    @Published var appLanguage: AppLanguage {
+        didSet {
+            defaults.set(appLanguage.rawValue, forKey: AppLanguage.defaultsKey)
+            notice = nil
+            onLanguageChanged?(appLanguage)
+        }
+    }
     @Published var searchText = "" {
         didSet { selectedIndex = 0 }
     }
@@ -70,13 +78,18 @@ final class AppState: ObservableObject {
     var onPrivacyRulesChanged: ((Set<String>) -> Void)?
     var onShortcutChanged: ((GlobalShortcutDefinition) -> Void)?
     var onPauseChanged: ((Bool) -> Void)?
+    var onLanguageChanged: ((AppLanguage) -> Void)?
 
     private let store: HistoryStore
     private let defaults: UserDefaults
+    private var builtInPinboardID: UUID?
 
     init(store: HistoryStore, defaults: UserDefaults = .standard) {
         self.store = store
         self.defaults = defaults
+        appLanguage = AppLanguage.resolved(defaults: defaults)
+        builtInPinboardID = defaults.string(forKey: DefaultsKey.builtInPinboardID)
+            .flatMap(UUID.init(uuidString:))
         let storedDays = defaults.integer(forKey: DefaultsKey.retentionDays)
         retentionDays = storedDays == 0 ? 1 : min(max(storedDays, 1), 30)
         excludedBundleIdentifiers = defaults.stringArray(
@@ -99,10 +112,12 @@ final class AppState: ObservableObject {
                 forKey: DefaultsKey.clipboardClassificationVersion
             )
         }
-        if store.fetchPinboards().isEmpty {
-            try? store.createPinboard(name: "收藏", colorHex: "FFB020")
-        }
+        resolveBuiltInPinboardIdentity()
         refresh()
+    }
+
+    var strings: AppStrings {
+        AppStrings(language: appLanguage)
     }
 
     var filteredRecords: [ClipboardRecord] {
@@ -115,7 +130,8 @@ final class AppState: ObservableObject {
             return record.title.localizedCaseInsensitiveContains(query) ||
                 record.searchableText.localizedCaseInsensitiveContains(query) ||
                 (record.sourceApplicationName?.localizedCaseInsensitiveContains(query) ?? false) ||
-                record.kind.displayName.localizedCaseInsensitiveContains(query)
+                record.kind.displayName(using: strings).localizedCaseInsensitiveContains(query) ||
+                record.kind.storageName.localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -137,7 +153,7 @@ final class AppState: ObservableObject {
             notice = nil
             refresh()
         } catch {
-            notice = "保存失败：\(error.localizedDescription)"
+            notice = strings.format("error.save_failed", error.localizedDescription)
         }
     }
 
@@ -177,7 +193,7 @@ final class AppState: ObservableObject {
             try store.delete(selectedRecord)
             refresh()
         } catch {
-            notice = "删除失败：\(error.localizedDescription)"
+            notice = strings.format("error.delete_failed", error.localizedDescription)
         }
     }
 
@@ -188,7 +204,7 @@ final class AppState: ObservableObject {
             try store.createPinboard(name: cleanName, colorHex: colorHex)
             refresh()
         } catch {
-            notice = "无法创建 Pinboard：\(error.localizedDescription)"
+            notice = strings.format("error.create_pinboard_failed", error.localizedDescription)
         }
     }
 
@@ -196,9 +212,13 @@ final class AppState: ObservableObject {
         do {
             if selectedPinboardID == pinboard.id { selectedPinboardID = nil }
             try store.deletePinboard(pinboard)
+            if builtInPinboardID == pinboard.id {
+                builtInPinboardID = nil
+                defaults.removeObject(forKey: DefaultsKey.builtInPinboardID)
+            }
             refresh()
         } catch {
-            notice = "无法删除 Pinboard：\(error.localizedDescription)"
+            notice = strings.format("error.delete_pinboard_failed", error.localizedDescription)
         }
     }
 
@@ -214,7 +234,7 @@ final class AppState: ObservableObject {
             try store.save()
             refresh()
         } catch {
-            notice = "固定失败：\(error.localizedDescription)"
+            notice = strings.format("error.pin_failed", error.localizedDescription)
         }
     }
 
@@ -223,7 +243,7 @@ final class AppState: ObservableObject {
             try store.clearUnpinnedHistory()
             refresh()
         } catch {
-            notice = "清理失败：\(error.localizedDescription)"
+            notice = strings.format("error.clear_failed", error.localizedDescription)
         }
     }
 
@@ -246,5 +266,39 @@ final class AppState: ObservableObject {
 
     func removeExcludedApplication(bundleIdentifier: String) {
         excludedBundleIdentifiers.removeAll { $0 == bundleIdentifier }
+    }
+
+    func pinboardDisplayName(_ pinboard: PinboardRecord) -> String {
+        pinboard.id == builtInPinboardID
+            ? strings.text("pinboard.favorites")
+            : pinboard.name
+    }
+
+    private func resolveBuiltInPinboardIdentity() {
+        let existingPinboards = store.fetchPinboards()
+        if let builtInPinboardID,
+           existingPinboards.contains(where: { $0.id == builtInPinboardID }) {
+            return
+        }
+        builtInPinboardID = nil
+        defaults.removeObject(forKey: DefaultsKey.builtInPinboardID)
+
+        let legacyCandidates = existingPinboards.filter {
+            ["Favorites", "收藏"].contains($0.name) && $0.colorHex == "FFB020"
+        }
+        if legacyCandidates.count == 1, let candidate = legacyCandidates.first {
+            saveBuiltInPinboardID(candidate.id)
+            return
+        }
+
+        guard existingPinboards.isEmpty,
+              let pinboard = try? store.createPinboard(name: "Favorites", colorHex: "FFB020")
+        else { return }
+        saveBuiltInPinboardID(pinboard.id)
+    }
+
+    private func saveBuiltInPinboardID(_ id: UUID) {
+        builtInPinboardID = id
+        defaults.set(id.uuidString, forKey: DefaultsKey.builtInPinboardID)
     }
 }
